@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ticket Cockpit: design draft v0.3</title>
+<style>
+:root{
+  --bg:#0a0e16;--panel:#0e1420;--panel2:#121a29;--line:#1c2638;--line2:#2a3850;
+  --text:#d6deeb;--muted:#8391aa;--dim:#4c5971;
+  --ok-bg:#0e2818;--ok-bd:#2f8f46;--ok-tx:#7ee2a0;
+  --warn-bg:#30250b;--warn-bd:#c9962a;--warn-tx:#f3cd6a;
+  --fail-bg:#371219;--fail-bd:#e5534b;--fail-tx:#ff8a84;
+  --blue:#3b82f6;--blue-bg:#0e1b33;--blue-tx:#86b6ff;
+  --ai:#a78bfa;--ai-bg:#1d1636;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)} .dim{color:var(--dim)}
+
+/* top bar */
+.top{height:48px;display:flex;align-items:center;gap:18px;padding:0 16px;border-bottom:1px solid var(--line);background:#0b111c;view-transition-name:topbar}
+.logo{font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+.logo i{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,var(--blue),var(--ai));display:inline-block}
+.project{padding:4px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--panel)}
+.tabs{display:flex;gap:4px;margin-left:8px}
+.tabs button{background:none;border:0;padding:14px 10px;color:var(--muted);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--text);border-bottom-color:#e8705a}
+.conns{margin-left:auto;display:flex;gap:10px;align-items:center;color:var(--muted);font-size:12px}
+.conn{display:flex;align-items:center;gap:5px;padding:3px 8px;border:1px solid var(--line);border-radius:999px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok-bd);display:inline-block}
+.dot.warn{background:var(--warn-bd)} .dot.ai{background:var(--ai)}
+.screen{display:none;height:calc(100% - 48px)} .screen.on{display:flex}
+
+/* shared bits */
+.badge{font-size:11px;padding:0 7px;border-radius:999px;background:var(--line2);color:var(--text)}
+.badge.warn{background:var(--warn-bd);color:#1a1405;font-weight:700}
+.kind{font-size:10.5px;padding:1px 6px;border-radius:4px;font-weight:600;letter-spacing:.3px;white-space:nowrap}
+.k-fail{background:var(--fail-bg);color:var(--fail-tx);border:1px solid var(--fail-bd)}
+.k-perm{background:var(--warn-bg);color:var(--warn-tx);border:1px solid var(--warn-bd)}
+.k-review,.k-ai{background:var(--ai-bg);color:var(--ai);border:1px solid #5b47a8}
+.k-wait{background:#151d2c;color:var(--muted);border:1px solid var(--line2)}
+.k-ok{background:var(--ok-bg);color:var(--ok-tx);border:1px solid var(--ok-bd)}
+.mini{display:flex;gap:3px;align-items:center}
+.mini span{width:18px;height:5px;border-radius:2px;background:var(--line2)}
+.mini .g{background:var(--ok-bd)} .mini .b{background:var(--blue)} .mini .r{background:var(--fail-bd)} .mini .v{background:var(--ai)} .mini .a{background:var(--warn-bd)}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--ai);border-right-color:transparent;border-radius:50%;animation:sp 1s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.btn{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 10px}
+.btn:hover{border-color:#3d4f6e}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.ai{background:var(--ai-bg);border-color:#5b47a8;color:#d9ccff}
+.btn.bad{border-color:#7a2b2b;color:var(--fail-tx)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.pill{padding:2px 8px;border-radius:999px;border:1px solid var(--line2);background:var(--panel2);color:var(--muted);white-space:nowrap}
+.pill.need{background:var(--warn-bd);color:#1a1405;border-color:var(--warn-bd);font-weight:700;letter-spacing:.4px}
+.pill.ai{color:var(--ai);border-color:#4a3a8c;background:var(--ai-bg)}
+.pill.back{color:var(--warn-tx);border-color:#6e5418}
+.pill.st{color:var(--blue-tx);border-color:#1f3d6e;background:#0d1a31;font-weight:700;letter-spacing:.6px;font-size:11.5px;border-radius:5px}
+.pill.st.done{color:var(--ok-tx);border-color:#1f5530;background:#0d2216}
+
+/* ===== board (shared by My tickets + Cockpit) ===== */
+.boardwrap{padding:12px 18px 6px;overflow-x:auto}
+.board{display:grid;min-width:1100px;row-gap:6px;
+  grid-template-columns:96px 40px minmax(150px,1fr) 40px minmax(200px,1.35fr) 40px minmax(160px,1fr) 40px 124px 40px minmax(140px,.9fr) 40px 88px}
+.colbg{border:1px solid var(--line);border-radius:10px;background:#0c121d;margin:0 -6px}
+.colbg.cur{border-color:var(--blue);background:linear-gradient(180deg,#0f1f3d 0,#0c1528 100%)}
+.colbg.lock{border-style:dashed;background:transparent;opacity:.8}
+.ch{grid-row:1;text-align:center;padding:7px 2px 6px;font-size:12px;color:var(--muted);line-height:1.35}
+.ch b{display:block;font-weight:600;color:var(--text);font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+.ch.cur b,.ch.cur{color:var(--blue-tx)}
+.ch .st{color:var(--ok-tx);font-size:11.5px}
+.ch .here{display:inline-block;margin-top:2px;font-size:10.5px;padding:0 6px;border-radius:999px;background:var(--blue);color:#fff;font-weight:600}
+.ch.lockh,.ch.lockh b{color:var(--dim)}
+.bandline{border-top:1px dashed #223049;margin:-3px 0 0;position:relative}
+.bandline span{position:absolute;left:4px;top:4px;font-size:10px;color:var(--dim);background:var(--bg);padding:0 4px;letter-spacing:.5px;text-transform:uppercase}
+.tcard .bandline span{background:#0c111b}
+.node{border-radius:8px;padding:5px 10px;border:1px solid;font-size:12px;line-height:1.3;position:relative;align-self:stretch;margin:0 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.node b{display:block;font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
+.node .mono{font-size:11px;opacity:.85}
+.node.tk{border-radius:8px 8px 8px 8px;border-left-width:3px}
+.n-ok{background:var(--ok-bg);border-color:var(--ok-bd);color:#cfe9d7} .n-ok b{color:var(--ok-tx)}
+.n-warn{background:var(--warn-bg);border-color:var(--warn-bd);color:#f1dfb0} .n-warn b{color:var(--warn-tx)}
+.n-fail{background:var(--fail-bg);border-color:var(--fail-bd);color:#f5c9c6} .n-fail b{color:var(--fail-tx)}
+.n-wait{background:#101b30;border-color:#35588f;color:#b9cdee} .n-wait b{color:var(--blue-tx)}
+.n-lock,.n-skip{border-style:dashed;border-color:var(--line2);color:var(--dim);background:transparent}
+.n-lock b,.n-skip b{color:#66748d}
+.n-ai{box-shadow:0 0 0 2px var(--ai),0 0 18px -4px var(--ai)}
+.aitag{position:absolute;top:5px;right:6px;font-size:10px;color:#e0d6ff;background:#4b3a91;padding:0 6px;border-radius:999px;font-weight:600}
+.span{align-self:center}
+.gut{position:relative;display:grid;row-gap:6px}
+.wire{position:relative}
+.wire::before{content:"";position:absolute;left:2px;right:6px;top:50%;border-top:1.5px solid var(--ok-bd);opacity:.7}
+.wire::after{content:"";position:absolute;right:2px;top:calc(50% - 4px);border:4px solid transparent;border-left:6px solid var(--ok-bd);opacity:.7}
+.wire.off::before{border-top:1.5px dashed var(--dim)} .wire.off::after{border-left-color:var(--dim)}
+.gate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:1.5px solid;background:var(--bg);z-index:2;cursor:pointer}
+.g-done{border-color:var(--ok-bd);color:var(--ok-tx)}
+.g-pend{border-color:var(--warn-bd);color:var(--warn-tx);font-size:10px}
+.g-fail{border-color:var(--fail-bd);color:var(--fail-tx)}
+.g-lock{border-color:var(--line2);color:var(--dim);border-style:dashed}
+.g-ready{border-color:var(--blue);color:#fff;background:var(--blue);animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6)}100%{box-shadow:0 0 0 10px rgba(59,130,246,0)}}
+.gate:hover::after{content:attr(data-tip);position:absolute;bottom:34px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#1b2436;border:1px solid var(--line2);color:var(--text);padding:4px 8px;border-radius:6px;font-weight:400;font-size:11.5px}
+.rework{grid-column:5/10;position:relative}
+.rework .u{position:absolute;left:100px;right:62px;top:0;height:18px;border:1.5px dashed var(--warn-bd);border-top:0;border-radius:0 0 10px 10px;opacity:.85}
+.rework .u::before{content:"";position:absolute;left:-5.5px;top:-6px;border:4.5px solid transparent;border-bottom:7px solid var(--warn-bd)}
+.rework .lbl{position:absolute;left:50%;top:9px;transform:translateX(-50%);background:var(--bg);padding:0 8px;color:var(--warn-tx);font-size:11.5px;white-space:nowrap}
+
+/* ===== My tickets ===== */
+#tickets{flex-direction:column;overflow:auto}
+.tl{padding:18px 26px 40px;max-width:1700px;width:100%;margin:0 auto}
+.tl-top{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.tl-top h2{margin:0;font-size:18px}
+.tl-sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+.filters{display:flex;gap:6px;margin-left:16px}
+.filters span{padding:4px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);cursor:pointer;font-size:12px}
+.filters span.on{background:var(--panel2);color:var(--text);border-color:#3d4f6e}
+.filters span b{margin-left:4px;color:var(--text)}
+.tcard{border:1px solid var(--line);border-radius:14px;background:#0c111b;margin-bottom:16px;cursor:pointer;transition:border-color .2s,transform .2s var(--ease),box-shadow .2s}
+.tcard:hover{border-color:#34507f;transform:translateY(-2px);box-shadow:0 10px 30px -12px rgba(59,130,246,.35)}
+.tc-h{display:flex;align-items:center;gap:10px;padding:14px 18px 0}
+.tc-title{font-size:15px;font-weight:600;display:flex;gap:10px;align-items:baseline;width:fit-content}
+.tc-title .key{color:var(--blue-tx)}
+.tc-h .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tc-f{display:flex;align-items:center;gap:10px;padding:2px 18px 12px;font-size:12px}
+.tc-f .nx{color:var(--warn-tx)} .tc-f .nx b{color:var(--text);font-weight:500}
+.tc-f .open{margin-left:auto;color:var(--blue-tx);opacity:0;transform:translateX(-6px);transition:.2s var(--ease)}
+.tcard:hover .open{opacity:1;transform:none}
+.tcard.need{border-left:3px solid var(--warn-bd)}
+.tcard.fail{border-left:3px solid var(--fail-bd)}
+.tcard.working{border-left:3px solid var(--ai)}
+
+/* ===== Cockpit ===== */
+.inbox{width:300px;flex:none;border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 10px;view-transition-name:inbox}
+.ib-h{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:14px 6px 6px}
+.ib-h:first-child{margin-top:2px}
+.item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--panel2);cursor:pointer}
+.item:hover{border-color:var(--line2)}
+.item.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset;background:var(--blue-bg)}
+.item .r1{display:flex;justify-content:space-between;align-items:center}
+.item .key{color:var(--blue-tx);font-weight:600}
+.item .msg{margin:3px 0 6px}
+.item .r3{display:flex;justify-content:space-between;align-items:center;margin-top:2px;font-size:11px;color:var(--dim)}
+.item.done{opacity:.6}
+.focus{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.thead{padding:12px 18px 10px;display:flex;align-items:flex-start;gap:14px;border-bottom:1px solid var(--line)}
+.backlink{color:var(--muted);font-size:12px;cursor:pointer;margin-bottom:6px;display:inline-block}
+.backlink:hover{color:var(--text)}
+.thead h1{font-size:16px;margin:0 0 6px;font-weight:600;width:fit-content}
+.thead h1 .key{color:var(--blue-tx);margin-right:8px}
+.meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px}
+.thead .acts{margin-left:auto;display:flex;gap:6px}
+.next{margin-top:8px;font-size:12px;color:var(--warn-tx)}
+.next b{color:var(--text);font-weight:500}
+#c-board{view-transition-name:board}
+.legend{display:flex;gap:16px;font-size:11.5px;color:var(--muted);padding:2px 18px 8px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border-radius:50%;border:1.5px solid;display:inline-block}
+.work{flex:1;min-height:300px;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,1fr);border-top:1px solid var(--line);view-transition-name:work}
+.console{display:flex;flex-direction:column;background:#070a11;border-right:1px solid var(--line);min-height:0}
+.ctabs{display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line);background:#0a0f19;height:34px;flex:none}
+.ctab{padding:6px 10px;border-radius:6px 6px 0 0;color:var(--text);font-size:12px;background:#070a11;border:1px solid var(--line);border-bottom-color:#070a11;margin-bottom:-1px;align-self:flex-end}
+.cstat{margin-left:auto;font-size:11.5px;display:flex;gap:10px;align-items:center}
+.harness{display:flex;gap:6px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted);flex:none;flex-wrap:wrap}
+.hb{padding:1px 7px;border-radius:4px;border:1px solid var(--line2);font-family:var(--mono);font-size:10.5px}
+.hb.ok{color:var(--ok-tx);border-color:#1f5530}
+.term{flex:1;overflow:auto;padding:10px 14px;white-space:pre-wrap;font:12px/1.55 var(--mono);color:#c8d1e0}
+.term .p{color:#7fb2ff} .term .t{color:var(--ai)} .term .ok{color:var(--ok-tx)} .term .d{color:var(--dim)} .term .y{color:var(--warn-tx)} .term .r{color:var(--fail-tx)}
+.term .sys{color:#5f6f8c;border-left:2px solid #2c3a55;padding-left:8px;display:inline-block}
+.caret{display:inline-block;width:7px;height:14px;background:#c8d1e0;vertical-align:-2px;animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+.quick{display:flex;gap:6px;padding:6px 10px;border-top:1px solid var(--line);flex-wrap:wrap;flex:none;align-items:center}
+.chip{font-size:11.5px;padding:3px 8px;border-radius:999px;border:1px solid #4a3a8c;color:#d9ccff;background:var(--ai-bg);cursor:pointer}
+.chip.plain{border-color:var(--line2);color:var(--muted);background:transparent}
+.cp{overflow:auto;padding:12px 16px;background:var(--panel);min-height:0}
+.cp h3{margin:0 0 2px;font-size:13px;display:flex;gap:8px;align-items:center}
+.cp .sub{color:var(--muted);font-size:12px;margin-bottom:10px}
+.card{border:1px solid var(--line2);border-radius:8px;background:var(--panel2);padding:10px 12px;margin-bottom:10px}
+.card h4{margin:0 0 6px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.card h4 em{font-style:normal;text-transform:none;letter-spacing:0}
+.list{margin:0;padding:0;list-style:none;font-size:12.5px}
+.list li{padding:2px 0;display:flex;gap:8px}
+.list li::before{width:12px;flex:none}
+.list .y::before{content:"✓";color:var(--ok-tx)}
+.list .n::before{content:"○";color:var(--warn-tx)}
+.list .x::before{content:"✕";color:var(--fail-tx)}
+.list .i::before{content:"•";color:var(--muted)}
+.draft{border:1px dashed #5b47a8;border-radius:6px;padding:8px 10px;background:#120f22;color:#e3dcff;font-size:12.5px}
+.codebox{font:12px var(--mono);background:#070a11;border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:#e6edf7}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.hint{font-size:11.5px;color:var(--dim);margin-top:6px}
+.eff{font-size:12px;color:var(--muted);margin-top:6px}
+.eff code{color:var(--text);background:#0b111c;padding:0 4px;border-radius:3px}
+
+/* view transitions */
+::view-transition-group(board),::view-transition-group(ttitle){animation-duration:.55s;animation-timing-function:var(--ease)}
+::view-transition-old(board),::view-transition-new(board){height:100%;width:100%;object-fit:cover;object-position:left top}
+::view-transition-new(work){animation:vt-up .5s .08s var(--ease) both}
+::view-transition-old(work){animation:vt-down .28s ease both}
+::view-transition-new(inbox){animation:vt-left .5s var(--ease) both}
+::view-transition-old(inbox){animation:vt-left-out .28s ease both}
+::view-transition-old(root){animation:vt-fade-out .22s ease both}
+::view-transition-new(root){animation:vt-fade-in .4s .1s ease both}
+@keyframes vt-up{from{transform:translateY(80px);opacity:0}}
+@keyframes vt-down{to{transform:translateY(80px);opacity:0}}
+@keyframes vt-left{from{transform:translateX(-60px);opacity:0}}
+@keyframes vt-left-out{to{transform:translateX(-60px);opacity:0}}
+@keyframes vt-fade-out{to{opacity:0}}
+@keyframes vt-fade-in{from{opacity:0}}
+
+/* ===== editor ===== */
+.ed{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 420px;min-width:0}
+.canvaswrap{overflow:auto;padding:16px 18px;position:relative}
+.edbar{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.edbar .file{font:12px var(--mono);color:var(--muted);margin-right:auto}
+.edbar .file b{color:var(--ok-tx);font-weight:400}
+.edbar .file .br{color:var(--ai)}
+.edsub{font-size:12px;color:var(--muted);margin-bottom:12px}
+.edsub b{color:var(--text);font-weight:500}
+.cols{display:flex;align-items:stretch;gap:0;max-width:1180px}
+.ecol{flex:1;min-width:128px;border:1px solid var(--line2);border-radius:10px;background:var(--panel);padding:8px}
+.ecol h5{margin:0 0 2px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center}
+.ecol h5 i{font-style:normal;color:var(--dim);font-size:10px}
+.ecol .js{font-size:10.5px;color:var(--dim);margin-bottom:8px}
+.erow{display:block;border:1px solid var(--line2);border-radius:7px;padding:5px 7px;margin-bottom:5px;font-size:11.5px;background:var(--panel2);cursor:pointer}
+.erow:hover{border-color:#4d6288}
+.erow.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset;background:var(--blue-bg)}
+.erow small{display:block;color:var(--dim);font-family:var(--mono);font-size:10px;margin-top:1px}
+.erow .sc{font-size:10px;font-weight:600;padding:0 4px;border-radius:3px;margin-right:4px}
+.sc.chg{background:#13284a;color:var(--blue-tx)} .sc.tkt{background:#2a1f47;color:#cbbaff}
+.eadd{font-size:11px;color:var(--dim);border:1px dashed var(--line2);border-radius:7px;padding:4px 7px;text-align:center}
+.egate{width:30px;flex:none;display:grid;place-items:center}
+.egate span{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:11px;color:var(--muted);background:var(--bg);cursor:pointer}
+.egate span.sel{border-color:var(--blue);background:var(--blue);color:#fff}
+.side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:14px 16px}
+.side h3{margin:0 0 2px;font-size:14px}
+.fld{margin:12px 0}
+.fld label{display:block;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.inp{border:1px solid var(--line2);background:#0b111c;border-radius:6px;padding:6px 9px;font-size:12.5px}
+.inp.code{font-family:var(--mono);font-size:12px;white-space:pre-wrap}
+.inp.ro{opacity:.7}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+.seg span{padding:4px 10px;font-size:12px;color:var(--muted);border-right:1px solid var(--line2)}
+.seg span:last-child{border-right:0}
+.seg span.on{background:var(--blue);color:#fff}
+.seg span.na{opacity:.4}
+table.sa{width:100%;border-collapse:collapse;font-size:12px}
+table.sa td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.sa td:first-child{white-space:nowrap;color:var(--text)}
+table.sa code{font-family:var(--mono);font-size:11.5px;color:#cfe0ff}
+.yaml{font:11.5px/1.55 var(--mono);background:#070a11;border:1px solid var(--line);border-radius:8px;padding:10px 12px;white-space:pre;overflow:auto;color:#c8d1e0}
+.yaml .k{color:#7fb2ff} .yaml .s{color:var(--ok-tx)} .yaml .c{color:var(--dim)}
+.below{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;max-width:1180px}
+table.repos{width:100%;border-collapse:collapse;font-size:12px}
+table.repos td,table.repos th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+table.repos th{color:var(--muted);font-weight:500;font-size:11px}
+
+/* ===== concepts ===== */
+.cwrap{flex:1;overflow:auto;padding:22px 26px}
+.layers{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:1240px}
+.layer{border:1px solid var(--line2);border-radius:12px;padding:12px 14px;background:var(--panel)}
+.layer h3{margin:0 0 4px;font-size:12px;letter-spacing:.7px;text-transform:uppercase}
+.layer .lead{color:var(--muted);font-size:12px;margin-bottom:10px}
+.cbox{border:1px solid var(--line2);border-radius:8px;padding:7px 10px;margin:6px 0;background:var(--panel2)}
+.cbox b{display:block}
+.cbox span{color:var(--muted);font-size:12px}
+.cbox.in{margin-left:16px} .cbox.in2{margin-left:32px}
+.cbox.hl{border-color:var(--ai);background:var(--ai-bg)}
+.cbox.hl2{border-color:var(--blue);background:var(--blue-bg)}
+.rules{max-width:1240px;margin-top:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.rule{border-left:3px solid var(--blue);padding:6px 12px;background:var(--panel);border-radius:0 8px 8px 0}
+.rule b{display:block;margin-bottom:3px}
+.rule span{color:var(--muted);font-size:12px}
+.rule.ai{border-left-color:var(--ai)}
+.dist{max-width:1240px;margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tree{font:12px/1.6 var(--mono);white-space:pre;color:#c8d1e0}
+.tree .c{color:var(--dim)} .tree .h{color:var(--ok-tx)} .tree .a{color:var(--ai)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo"><i></i>Ticket Cockpit <span class="dim" style="font-weight:400">· localhost:4577 · draft v0.3</span></div>
+  <div class="project">Deck Builder ▾</div>
+  <div class="tabs">
+    <button class="on" data-s="tickets">My tickets</button>
+    <button data-s="cockpit">Cockpit</button>
+    <button data-s="editor">Pipeline editor</button>
+    <button data-s="concepts">Concepts</button>
+  </div>
+  <div class="conns">
+    <span class="conn"><span class="dot"></span>Jira</span>
+    <span class="conn"><span class="dot"></span>GitHub</span>
+    <span class="conn"><span class="dot"></span>Actions</span>
+    <span class="conn"><span class="dot warn"></span>GKE · re-auth</span>
+    <span class="conn"><span class="dot ai"></span>Claude Code · 5 sessions</span>
+    <span>● Live</span>
+  </div>
+</div>
+
+<!-- ================= MY TICKETS ================= -->
+<section class="screen on" id="tickets">
+  <div class="tl">
+    <div class="tl-top">
+      <h2>My tickets</h2>
+      <div class="filters" id="filters"></div>
+      <button class="btn" style="margin-left:auto">Sort: by attention ▾</button>
+      <button class="btn">Refresh</button>
+    </div>
+    <div class="tl-sub">6 tickets in your current sprint · <span class="mono">assignee = currentUser() AND sprint in openSprints()</span> · one Claude Code session per ticket · click a ticket to open it in the cockpit</div>
+    <div id="tlist"></div>
+  </div>
+</section>
+
+<!-- ================= COCKPIT ================= -->
+<section class="screen" id="cockpit">
+  <aside class="inbox" id="inbox"></aside>
+  <main class="focus">
+    <div class="thead" id="c-head"></div>
+    <div id="c-board"></div>
+    <div class="legend">
+      <span><i style="border-color:var(--ok-bd)"></i>status moved</span>
+      <span><i style="border-color:var(--warn-bd)"></i>rows left (done/total)</span>
+      <span><i style="border-color:var(--blue);background:var(--blue)"></i>all rows done: you move it</span>
+      <span><i style="border-color:var(--line2);border-style:dashed"></i>locked</span>
+      <span><i style="border-color:var(--ai);box-shadow:0 0 6px var(--ai)"></i>agent working on node</span>
+      <span class="dim">Columns = Jira board · hover a gate for the rows left</span>
+    </div>
+    <div class="work">
+      <div class="console">
+        <div class="ctabs" id="c-tabs"></div>
+        <div class="harness" id="c-harness"></div>
+        <div class="term" id="c-term"></div>
+        <div class="quick">
+          <span class="dim" style="font-size:11.5px">Type into session:</span>
+          <span class="chip">▶ address-review-feedback</span>
+          <span class="chip">▶ resolve-conflict</span>
+          <span class="chip">▶ diagnose-stage-failure</span>
+          <span class="chip">▶ draft-pm-reply</span>
+          <span class="chip plain">Esc interrupt</span>
+          <span class="chip plain">⧉ copy prompt</span>
+        </div>
+      </div>
+      <div class="cp" id="c-panel"></div>
+    </div>
+  </main>
+</section>
+
+<!-- ================= EDITOR ================= -->
+<section class="screen" id="editor">
+  <div class="ed">
+    <div class="canvaswrap">
+      <div class="edbar">
+        <span class="file">AI-SDLC-App/<b>projects/deck-builder/pipeline.yaml</b> · branch <span class="br">team/deck-builder</span> · 2 uncommitted changes</span>
+        <button class="btn">⟳ Resync columns</button>
+        <button class="btn pri">Commit to team/deck-builder</button>
+      </div>
+      <div class="edsub">Columns: <b>Jira board DIG1</b> · synced 11:30 · <b>read-only</b>: they come from the tracker. You configure the <b>rows</b> inside each column and the <b>action set</b> of each gate. The rule is fixed: a ticket can move only when every row in its column is done.</div>
+
+      <div class="cols" id="ecols">
+        <div class="ecol"><h5>To Do <i>🔒 Jira</i></h5><div class="js">To Do, Backlog</div>
+          <span class="erow" data-r="start"><span class="sc tkt">TICKET</span>Start<small>tracker.status_after</small></span></div>
+        <div class="egate"><span data-r="g0">→</span></div>
+        <div class="ecol"><h5>In Progress <i>🔒</i></h5><div class="js">In Progress</div>
+          <span class="erow" data-r="opened"><span class="sc chg">CHANGE</span>PR opened<small>change.ready</small></span>
+          <div class="eadd">+ row</div></div>
+        <div class="egate"><span data-r="g1">→</span></div>
+        <div class="ecol"><h5>Code Review <i>🔒</i></h5><div class="js">Code Review</div>
+          <span class="erow sel" data-r="merged"><span class="sc chg">CHANGE</span>Approved &amp; merged<small>change.merged</small></span>
+          <span class="erow" data-r="indev"><span class="sc chg">CHANGE</span>In dev<small>env(dev).contains</small></span>
+          <span class="erow" data-r="val"><span class="sc tkt">TICKET</span>Validated in dev<small>attested · pinned</small></span>
+          <div class="eadd">+ row</div></div>
+        <div class="egate"><span data-r="g2">→</span></div>
+        <div class="ecol"><h5>E2E Testing <i>🔒</i></h5><div class="js">End to End Testing</div>
+          <span class="erow" data-r="instage"><span class="sc chg">CHANGE</span>In stage<small>env(stage).contains</small></span>
+          <span class="erow" data-r="tested"><span class="sc tkt">TICKET</span>Tested on stage<small>attested · pinned</small></span>
+          <div class="eadd">+ row</div></div>
+        <div class="egate"><span data-r="g3">→</span></div>
+        <div class="ecol"><h5>Ready for Demo <i>🔒</i></h5><div class="js">Ready for Demo</div>
+          <span class="erow" data-r="pm"><span class="sc tkt">TICKET</span>PM approved<small>tracker.reply_from</small></span>
+          <div class="eadd">+ row</div></div>
+        <div class="egate"><span data-r="g4">→</span></div>
+        <div class="ecol"><h5>Pending Depl. <i>🔒</i></h5><div class="js">Pending Deployment</div>
+          <span class="erow" data-r="inprod"><span class="sc chg">CHANGE</span>In prod<small>env(prod).contains</small></span></div>
+        <div class="egate"><span data-r="g5">→</span></div>
+        <div class="ecol"><h5>Done <i>🔒</i></h5><div class="js">Done, Released</div>
+          <span class="erow" data-r="done"><span class="sc tkt">TICKET</span>Done<small>tracker.status_in</small></span></div>
+      </div>
+      <div class="hint" style="max-width:1180px">On the board, a column's per-change rows are shown together in each change's cell (for example "merged · in dev"). Ticket rows sit in the band under the lanes. Hidden statuses (Won't Do, Duplicate, Cancelled) hide the ticket.</div>
+
+      <div class="below">
+        <div class="card">
+          <h4>Environments: where <span class="mono" style="text-transform:none">env(E).contains(change)</span> looks <em class="muted">project.yaml</em></h4>
+          <table class="repos">
+            <tr><th>Repo</th><th>dev</th><th>stage</th><th>prod</th></tr>
+            <tr><td>ba-backend</td><td>GH Actions · meta-build.yaml</td><td>Spinnaker · st (manual)</td><td>Spinnaker · prod</td></tr>
+            <tr><td>ba-frontend</td><td>GH Actions · meta-build.yaml</td><td>Spinnaker · st (manual)</td><td>Spinnaker · prod</td></tr>
+            <tr><td>dataform</td><td>GH Actions · deploy-np.yaml</td><td>GH Actions · deploy-stage.yaml</td><td>GH Actions · deploy-prod.yaml</td></tr>
+            <tr><td>dtb-action-service</td><td>Jenkins · dtb-as/deploy-dev</td><td>Jenkins · dtb-as/deploy-st</td><td>Jenkins · dtb-as/deploy-prod</td></tr>
+            <tr><td>dtb-docs</td><td>GH Actions · publish.yaml</td><td class="dim">— (row shows n/a)</td><td class="dim">same as dev</td></tr>
+          </table>
+          <div class="hint">Deployed commit = the run's commit by default. Override per environment: image label, tag, or <span class="mono">/version</span> endpoint. Optional runtime check: kubectl rollout and pods. Then <span class="mono">git merge-base --is-ancestor</span> on your mounted checkout (patch-id fallback for cherry-picks). No branch or tag naming is assumed, so it works with GitHub flow, gitflow and trunk-based.</div>
+        </div>
+        <div class="card">
+          <h4>Linking changes to tickets <em class="muted">project.yaml</em></h4>
+          <div class="yaml"><span class="k">changes</span>:
+  <span class="k">link_by</span>: [pr_title, branch]
+  <span class="k">key_pattern</span>: <span class="s">'(?i)\bDIG1-\d+\b'</span>
+  <span class="k">include_merged_days</span>: 45
+<span class="k">repos</span>:
+  - { <span class="k">name</span>: dataform,    <span class="k">path</span>: <span class="s">~/code/dataform</span> }      <span class="c"># mounted from host</span>
+  - { <span class="k">name</span>: ba-backend,  <span class="k">path</span>: <span class="s">~/code/ba-backend</span> }
+  - { <span class="k">name</span>: ba-frontend, <span class="k">path</span>: <span class="s">~/code/ba-frontend</span> }
+<span class="k">merge_order</span>: [dataform, ba-backend, ba-frontend, dtb-action-service, dtb-docs]</div>
+        </div>
+        <div class="card">
+          <h4>Agent harness <em class="muted">harness/claude-code.yaml</em></h4>
+          <div class="yaml"><span class="k">tool</span>: claude-code   <span class="c"># the real CLI, installed in the image</span>
+<span class="k">session</span>: { <span class="k">per</span>: ticket, <span class="k">cwd</span>: <span class="s">/workspaces/{{ticket.key}}</span> }
+<span class="k">launch</span>: <span class="s">claude --session-id {{session.id}}</span>
+<span class="k">resume</span>: <span class="s">claude --resume {{session.id}}</span>
+<span class="k">inject</span>: { <span class="k">mcp</span>: sdlc, <span class="k">instructions</span>: <span class="s">CLAUDE.md ← guardrails.md</span> }
+<span class="k">observe</span>: <span class="k">hooks</span>: [SessionStart, PreToolUse, Notification, Stop]
+<span class="k">control</span>: { <span class="k">send</span>: bracketed-paste, <span class="k">interrupt</span>: Esc }
+<span class="k">policy</span>: { <span class="k">deny</span>: [<span class="s">"Bash(gh pr merge*)"</span>, <span class="s">"mcp__atlassian__*write*"</span>] }</div>
+        </div>
+        <div class="card">
+          <h4>Guardrails <em class="muted">guardrails.md → CLAUDE.md in each workspace</em></h4>
+          <div class="inp code">- No comments in code.
+- Unit tests are written after manual testing.
+- Draft PR, Jira and PM texts with sdlc.draft. Never post them.
+- Never merge, promote or move tickets. The human does that from the board.</div>
+        </div>
+      </div>
+    </div>
+    <aside class="side" id="side"></aside>
+  </div>
+</section>
+
+<!-- ================= CONCEPTS ================= -->
+<section class="screen" id="concepts">
+  <div class="cwrap">
+    <div class="layers">
+      <div class="layer">
+        <h3 style="color:var(--blue-tx)">1 · Configuration</h3>
+        <div class="lead"><span class="mono">projects/&lt;name&gt;/</span> in your branch of AI-SDLC-App, edited visually.</div>
+        <div class="cbox"><b>Project</b><span>connectors + repos (mounted from host) + environments</span></div>
+        <div class="cbox in"><b>Connector</b><span>built-in code per capability: tracker · code · delivery (GH Actions, Jenkins, …) · runtime · agent</span></div>
+        <div class="cbox in hl2"><b>Columns</b><span>the tracker board's columns. Synced and read-only</span></div>
+        <div class="cbox in2 hl2"><b>Row</b><span>scope (change or ticket) · done_when (a built-in check) · states → action set</span></div>
+        <div class="cbox in2"><b>Gate</b><span>between columns: open when all rows are done · action set (always tracker.move)</span></div>
+        <div class="cbox in hl"><b>Harness</b><span>per AI tool: launch/resume · inject (MCP, guardrails) · observe (hooks) · control · policy</span></div>
+        <div class="cbox in"><b>Prompt templates + guardrails</b><span>named by row states, typed into the session</span></div>
+      </div>
+      <div class="layer">
+        <h3 style="color:var(--ok-tx)">2 · Runtime</h3>
+        <div class="lead">Derived live from the tools, never stored.</div>
+        <div class="cbox"><b>Ticket</b><span>its column = the tracker status. Its real column = the earliest column with an unfinished row</span></div>
+        <div class="cbox in"><b>Change</b><span>a PR or MR in any repo, linked by the ticket key in its title or branch</span></div>
+        <div class="cbox in2"><b>Row state</b><span>facts → state: reviews, CI runs, deployed commits, ancestry</span></div>
+        <div class="cbox in"><b>Environment content</b><span>the latest successful deploy run's commit, then <span class="mono">is-ancestor(change)</span></span></div>
+        <div class="cbox in"><b>Attestation</b><span>a human tick pinned to the deployed commits. Stale when they change</span></div>
+        <div class="cbox in hl"><b>Agent session: one per ticket</b><span>the real tool in a PTY in <span class="mono">/workspaces/KEY</span> (worktrees of your checkouts)</span></div>
+        <div class="cbox in hl"><b>Checkpoint</b><span>failure · permission · review · gate ready · external</span></div>
+      </div>
+      <div class="layer">
+        <h3 style="color:var(--ai)">3 · Experience</h3>
+        <div class="lead">A web app at localhost, served from Docker.</div>
+        <div class="cbox"><b>My tickets</b><span>every ticket's board. Click → animated into the Cockpit</span></div>
+        <div class="cbox"><b>Cockpit</b><span>inbox + one ticket's board + its session</span></div>
+        <div class="cbox in hl"><b>Session console</b><span>the tool's own TUI. You type directly, the harness types templates</span></div>
+        <div class="cbox in"><b>Checkpoint panel</b><span>what the agent did · drafts · permission answers · rows left before the next status</span></div>
+        <div class="cbox"><b>Pipeline editor</b><span>rows per column + gate action sets ⇄ YAML, committed to your branch</span></div>
+      </div>
+    </div>
+    <div class="rules">
+      <div class="rule"><b>Columns are the tracker's columns.</b><span>The ticket moves on only when every row is done. Going back is derived.</span></div>
+      <div class="rule ai"><b>One ticket, one session, the real tool.</b><span>The harness wraps Claude Code, Codex, … No CLI of our own.</span></div>
+      <div class="rule"><b>Deterministic in code, judgment in the agent.</b><span>Checks and connectors are built in. Scripts are a last resort.</span></div>
+      <div class="rule"><b>Independent of the git flow.</b><span>CI/CD runs + commit ancestry. No branch or tag naming assumed.</span></div>
+    </div>
+    <div class="dist">
+      <div class="layer">
+        <h3>Your branch of AI-SDLC-App</h3>
+        <div class="tree"><span class="h">AI-SDLC-App/</span>                     <span class="c">fork or branch, open source upstream</span>
+├─ app/                          <span class="c">web app (upstream only)</span>
+├─ projects/
+│  ├─ example/                   <span class="c">shipped upstream</span>
+│  └─ <span class="h">deck-builder/</span>              <span class="c">yours, never touched upstream</span>
+│     ├─ project.yaml            <span class="c">connectors, repos, environments, linking</span>
+│     ├─ pipeline.yaml           <span class="c">rows per column + gate action sets</span>
+│     ├─ <span class="a">harness/claude-code.yaml</span>
+│     ├─ prompts/*.md
+│     └─ guardrails.md
+├─ docker-compose.yml
+└─ .env.secrets                  <span class="c">gitignored</span></div>
+      </div>
+      <div class="layer">
+        <h3>docker compose up → localhost:4577</h3>
+        <div class="tree"><span class="h">cockpit</span> (one container)
+├─ web app: UI + SSE live updates + WebSocket terminals
+├─ engine: connectors, facts → row states, checkpoints
+├─ <span class="a">MCP server "sdlc"</span> + hook endpoint for harnesses
+└─ <span class="a">claude</span> (pinned), git, gh, kubectl, gcloud
+
+<span class="c">volumes</span>
+├─ ./projects            → /app/projects    <span class="c">config</span>
+├─ ~/code                → ~/code           <span class="c">your checkouts (same path)</span>
+├─ ~/cockpit/workspaces  → /workspaces      <span class="c">worktrees, open in your IDE</span>
+└─ ~/.config/gh, ~/.kube, ~/.config/gcloud, ~/.claude  <span class="c">read-only logins</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ---------- board model: columns = Jira board columns (fixed) ---------- */
+const COLS=['To Do','In Progress','Code Review','E2E Testing','Ready for Demo','Pending Depl.','Done'];
+const JIRA=['To Do','In Progress','Code Review','End to End Testing','Ready for Demo','Pending Deployment','Done'];
+const CHG={1:'ip',2:'cr',3:'e2e',5:'prod'};
+const TKT={0:'start',2:'val',3:'tst',4:'pm',6:'done'};
+const SPAN=[0,4,6];
+const N=(c,b,t,m,ai)=>({c,b,t,m,ai});
+const sha=s=>`<span class="mono">${s}</span>`;
+
+const T=[
+{key:'DIG1-324',title:'Replace scheduled jobs with triggerable admin endpoints',att:'need',kind:'fail',cur:3,
+ inbox:'Stage pods in CrashLoopBackOff (13 restarts), dtb-action-service',age:'14m',
+ next:'diagnose the stage deploy failure',session:['idle','idle since 11/16'],repos:'dtb-action-service',
+ gates:[['done','Moved → In Progress'],['done','Moved → Code Review'],['done','Moved → End to End Testing'],['fail','stage deploy failing','!'],['lock'],['lock']],
+ rows:{start:N('ok','Started'),val:N('ok','✓ Validated in dev',null,'pinned @ 9c1e0a7'),tst:N('lock','☐ Tested on stage','Waits for stage'),pm:N('lock','PM approved','Waits'),done:N('lock','Done','0 of 1')},
+ lanes:[{ip:N('ok','dtb-action-service #13','PR opened · 11/14'),cr:N('ok','#13 merged · in dev',null,'dev: jenkins #231 @ 9c1e0a7'),e2e:N('fail','In stage: failing',null,'st: jenkins #232 · CrashLoop'),prod:N('lock','In prod','Waits')}],
+ term:`<span class="sys">session 9b1e… · Claude Code · /workspaces/DIG1-324 · idle since 11/16 18:40</span>
+
+<span class="p">&gt;</span> (cockpit · promote-checklist) Stage promotion for DIG1-324: list what to verify on st…
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, 1 change, dev @ 9c1e0a7)</span>
+  Checklist ready: trigger <span class="y">dtb-as/deploy-st</span> for 9c1e0a7, then check /admin/jobs on st.
+
+<span class="sys">Cockpit: the stage deploy has been failing for 14 min. Nothing is sent to the session until you choose.</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-fail">FAILURE</span> Row "In stage" is failing</h3>
+ <div class="sub">dtb-action-service #13 · Jenkins dtb-as/deploy-st #232 @ 9c1e0a7 · runtime check (kubectl)</div>
+ <div class="card"><h4>Facts <em class="muted">Jenkins run ↗ · GKE workload ↗</em></h4>
+  <ul class="list"><li class="y">Deploy run #232 succeeded and deployed 9c1e0a7</li><li class="y">9c1e0a7 contains #13 (ancestor check)</li><li class="x">Rollout: 1 of 1 new pod in CrashLoopBackOff (13 restarts)</li><li class="i">Last log line:</li></ul>
+  <div class="codebox" style="margin-top:4px">KeyError: 'ADMIN_TOKEN_AUDIENCE'  (settings.py:41)</div></div>
+ <div class="card"><h4>Row action set · state "failed"</h4>
+  <div class="row"><button class="btn ai">▶ diagnose-deploy-failure in session</button><button class="btn">Open run ↗</button><button class="btn">⧉ Copy pod logs</button></div>
+  <div class="hint">A fix is a new change for DIG1-324. Code Review then has an unfinished row again, and the app offers "← Move back to Code Review".</div></div>
+ <div class="card"><h4>Before End to End Testing → Ready for Demo <em style="color:var(--fail-tx)">0 of 2 rows done</em></h4>
+  <ul class="list"><li class="x">In stage · #13</li><li class="n">Tested on stage (ticket)</li></ul>
+  <div class="eff">Gate action set: <code>tracker.move("Ready for Demo")</code> · then <code>▶ draft-pm-note</code></div></div>`},
+
+{key:'DIG1-448',title:'[Deck Builder] Attachment slide: one-department segments get a single self-paired attachment bar',att:'need',kind:'perm',cur:2,
+ inbox:'Claude Code asks to run make migrate-local in ba-backend',age:'now',
+ next:'answer the agent\'s permission request',session:['perm','waiting for permission'],repos:'ba-backend, ba-frontend',
+ gates:[['done','Moved → In Progress'],['done','Moved → Code Review'],['pend','#503 not merged, Validated in dev not ticked'],['lock'],['lock'],['lock']],
+ rows:{start:N('ok','Started'),val:N('lock','☐ Validated in dev','Waits for #503 in dev'),tst:N('lock','☐ Tested on stage'),pm:N('lock','PM approved','Waits'),done:N('lock','Done','0 of 1')},
+ lanes:[
+  {ip:N('ok','ba-backend #488','PR opened · 11/4'),cr:N('ok','#488 merged · in dev',null,'dev: meta-build #880 @ 1b7c2d0'),e2e:N('ok','In stage',null,'st: spinnaker @ 1b7c2d0'),prod:N('lock','In prod','Waits')},
+  {ip:N('ok','ba-frontend #212','PR opened · 11/10'),cr:N('ok','#212 merged · in dev',null,'dev: meta-build #412 @ e04c9aa'),e2e:N('ok','In stage',null,'st: spinnaker @ e04c9aa'),prod:N('lock','In prod','Waits')},
+  {ip:N('ok','ba-backend #503','PR opened · 11/15'),cr:N('warn','#503 address feedback','1 thread · agent working',null,true),e2e:N('lock','In stage','Waits for dev'),prod:N('lock','In prod','Waits')}],
+ term:`<span class="sys">session 51c0… · Claude Code · /workspaces/DIG1-448 (ba-backend, ba-frontend)</span>
+
+<span class="p">&gt;</span> (cockpit · address-review-feedback · #503) Address the open thread on attachment_slide.py:77…
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, 3 changes in 2 repos, 1 open thread)</span>
+<span class="t">●</span> Read <span class="d">ba-backend/src/deck/attachment_slide.py</span>
+<span class="t">●</span> Update <span class="d">ba-backend/src/deck/attachment_slide.py</span> <span class="ok">+14</span> <span class="r">−3</span>
+<span class="t">●</span> The local fixture DB needs the new column before the tests can run.
+
+<span class="y">╭─ Bash command ───────────────────────────────────────────────╮</span>
+<span class="y">│</span>  make migrate-local          <span class="d">(cwd: ba-backend)</span>
+<span class="y">│</span>  Do you want to proceed?
+<span class="y">│</span>  <span class="p">❯ 1. Yes</span>
+<span class="y">│</span>    2. Yes, and don't ask again for make migrate-local
+<span class="y">│</span>    3. No, and tell Claude what to do differently
+<span class="y">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-perm">PERMISSION</span> Claude Code asks to run a command</h3>
+ <div class="sub">ba-backend #503 · asked just now · caught by the <span class="mono">PreToolUse</span> hook</div>
+ <div class="card"><h4>Requested</h4>
+  <div class="codebox">make migrate-local</div>
+  <ul class="list" style="margin-top:6px"><li class="i">cwd: /workspaces/DIG1-448/ba-backend</li><li class="i">not in the project's allow list</li></ul>
+  <div class="row"><button class="btn pri">Allow once</button><button class="btn">Allow for this ticket</button><button class="btn bad">Deny…</button></div>
+  <div class="hint">Your answer goes back through the harness, and the same prompt in the terminal closes. You can also answer it in the terminal.</div></div>
+ <div class="card"><h4>Before Code Review → End to End Testing <em style="color:var(--warn-tx)">2 of 4 rows done</em></h4>
+  <ul class="list"><li class="y">#488 merged · in dev</li><li class="y">#212 merged · in dev</li><li class="n">#503 merged · in dev</li><li class="n">Validated in dev (ticket)</li></ul>
+  <div class="eff">Gate action set: <code>tracker.move("End to End Testing")</code></div></div>`},
+
+{key:'DIG1-440',title:'[Deck Builder] Event Analysis drops week 53 in 53-week years',att:'need',kind:'review',cur:2,
+ inbox:'Agent finished feedback on #510: check the fix and the drafted reply',age:'2m',
+ next:'review the agent\'s fix on ba-backend #510, then post the reply',session:['checkpoint','checkpoint · waiting for you'],repos:'ba-backend, dtb-docs',back:true,
+ rework:'↩ moved back from Ready for Demo: new change #510 left a Code Review row unfinished',
+ gates:[['done','Moved → In Progress'],['done','Moved → Code Review'],['pend','#510 not merged, Validated in dev is stale'],['lock'],['lock'],['lock']],
+ rows:{start:N('ok','Started'),val:N('warn','☐ Validated in dev','stale: dev moved to 7a1c3e0'),tst:N('lock','☐ Tested on stage','Waits'),pm:N('lock','PM feedback','Answered by #510'),done:N('lock','Done','0 of 1')},
+ lanes:[
+  {ip:N('ok','ba-backend #497','PR opened · 11/14'),cr:N('ok','#497 merged · in dev',null,'dev: meta-build #871 @ 4f2a91c'),e2e:N('ok','In stage',null,'st: spinnaker @ 4f2a91c'),prod:N('lock','In prod','Waits')},
+  {ip:N('ok','ba-backend #510','PR opened · 11/17'),cr:N('warn','#510 fix pushed','reply drafted · approve pending',null,true),e2e:N('lock','In stage','Waits for dev'),prod:N('lock','In prod','Waits')},
+  {ip:N('ok','dtb-docs #34','PR opened · 11/15'),cr:N('ok','#34 merged · published',null,'docs: publish #77 @ 3e9f0b1'),e2e:N('skip','n/a','No stage env'),prod:N('skip','n/a','Same as dev')}],
+ term:`<span class="sys">session 7f3a… · Claude Code · /workspaces/DIG1-440 (ba-backend, dtb-docs)</span>
+
+<span class="p">&gt;</span> (cockpit · address-review-feedback · #510) Address the open review thread on src/deck/event_analysis.py:118…
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, 3 changes, 1 open thread, PM comment of 11/16)</span>
+<span class="t">●</span> Read <span class="d">ba-backend/src/deck/event_analysis.py</span>
+<span class="t">●</span> The reviewer is right: <span class="y">week_range()</span> builds the range with <span class="y">range(1, 53)</span>, so it is off by one.
+<span class="t">●</span> Update <span class="d">ba-backend/src/deck/event_analysis.py</span> <span class="ok">+6</span> <span class="r">−2</span>
+<span class="t">●</span> Bash <span class="d">pytest tests/deck -q</span>
+  <span class="ok">42 passed in 3.1s</span>
+<span class="t">●</span> Bash <span class="d">git commit -m "DIG1-440 include ISO week 53 in range builder" &amp;&amp; git push</span>
+<span class="t">●</span> sdlc.draft <span class="d">(kind: pr_reply, thread: #510/r118)</span>
+<span class="t">●</span> sdlc.checkpoint <span class="d">(kind: review, summary: "Fixed off-by-one, test added, reply drafted")</span>
+
+  Done. I pushed one commit and drafted a reply to the thread. It's in the Cockpit panel; I didn't post it.
+
+<span class="d">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-review">CHECKPOINT</span> Agent finished: address review feedback</h3>
+ <div class="sub">ba-backend #510 · row "Approved &amp; merged" · 2 min ago</div>
+ <div class="card"><h4>What the agent did <em class="muted">view diff ↗</em></h4>
+  <ul class="list"><li class="y">1 commit pushed: <span class="mono">a41c9e2</span> include ISO week 53 in range builder</li><li class="y">Unit test added for 2026 (53 weeks): 42 passed</li><li class="y">Reply drafted for 1 open thread</li></ul></div>
+ <div class="card"><h4>Draft reply · event_analysis.py:118 <em style="color:var(--ai)">✦ drafted</em></h4>
+  <div class="draft">Good catch. The range now ends at the last ISO week of the year, so 53-week years (2026, 2032) include week 53. I added a test for 2026. Fixed in a41c9e2.</div>
+  <div class="row"><button class="btn pri">code.comment: post &amp; resolve</button><button class="btn">Edit</button><button class="btn ai">↺ Send back to agent…</button></div></div>
+ <div class="card"><h4>Before Code Review → End to End Testing <em style="color:var(--warn-tx)">2 of 4 rows done</em></h4>
+  <ul class="list"><li class="y">#497 merged · in dev</li><li class="y">#34 merged · published</li><li class="n">#510 approved, merged, in dev</li><li class="n">Validated in dev: <b>stale</b>. It was ticked @ 4f2a91c, and dev now runs 7a1c3e0</li></ul>
+  <div class="eff">Gate action set: <code>tracker.move("End to End Testing")</code> · then <code>▶ promote-checklist</code></div>
+  <div class="row"><button class="btn pri" disabled>Move → End to End Testing</button><span class="dim" style="font-size:11.5px">Enabled when every row is done. You always move it.</span></div></div>`},
+
+{key:'DIG1-315',title:'[Email] Standardize rate metrics using bps',att:'working',kind:'ai',cur:1,
+ inbox:'Writing tests for bps rate metrics (ba-backend #508)',age:'7m',
+ next:'nothing for you while the agent works',session:['working','working · 7m'],repos:'ba-backend, dataform',
+ gates:[['done','Moved → In Progress'],['pend','PRs are still drafts'],['lock'],['lock'],['lock'],['lock']],
+ rows:{start:N('ok','Started'),val:N('lock','☐ Validated in dev'),tst:N('lock','☐ Tested on stage'),pm:N('lock','PM approved','Waits'),done:N('lock','Done','0 of 1')},
+ lanes:[
+  {ip:N('wait','ba-backend #508','Draft · agent writing tests',null,true),cr:N('lock','Merged · in dev','Waits'),e2e:N('lock','In stage','Waits'),prod:N('lock','In prod','Waits')},
+  {ip:N('wait','dataform #77','Draft · bps views'),cr:N('lock','Merged · in dev','Waits'),e2e:N('lock','In stage','Waits'),prod:N('lock','In prod','Waits')}],
+ term:`<span class="sys">session 22d8… · Claude Code · /workspaces/DIG1-315 (ba-backend, dataform)</span>
+
+<span class="p">&gt;</span> (cockpit · build-ticket) Build DIG1-315 from ai/specs/DIG1-315/ …
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, spec, 2 attachments)</span>
+<span class="t">●</span> Update <span class="d">dataform/definitions/rates/*.sqlx</span> <span class="ok">+48</span> <span class="r">−31</span>
+<span class="t">●</span> Write <span class="d">ba-backend/src/email/rates.py</span>
+<span class="t">●</span> Bash <span class="d">pytest tests/email -q</span>
+  <span class="r">3 failed</span>, 18 passed
+<span class="t">●</span> Update <span class="d">ba-backend/src/email/rates.py</span> <span class="ok">+9</span> <span class="r">−4</span>
+<span class="t">●</span> Bash <span class="d">pytest tests/email -q</span>
+  <span class="d">running…</span>
+
+<span class="t">✻ Working…</span> <span class="d">(7m · esc to interrupt)</span>`,
+ panel:`<h3><span class="kind k-ai">AGENT WORKING</span> Building DIG1-315</h3>
+ <div class="sub">7 min · 2 draft changes in 2 repos · status from the harness hooks</div>
+ <div class="card"><h4>Live summary</h4>
+  <ul class="list"><li class="i">6 files changed in ba-backend, dataform</li><li class="i">Tests: 3 failing → being fixed</li><li class="i">Last tool: Bash · pytest tests/email</li></ul>
+  <div class="row"><button class="btn">Esc · Interrupt</button><button class="btn">Add a note to the session…</button></div>
+  <div class="hint">Nothing needs you. You get a checkpoint when the agent calls <span class="mono">sdlc.checkpoint</span> or stops.</div></div>
+ <div class="card"><h4>Before In Progress → Code Review <em class="muted">0 of 2 rows done</em></h4>
+  <ul class="list"><li class="n">#508 opened, not a draft, CI green</li><li class="n">#77 opened, not a draft, CI green</li></ul>
+  <div class="eff">Gate action set: <code>tracker.move("Code Review")</code></div></div>`},
+
+{key:'DIG1-460',title:'[Deck Builder] PPTX export keeps chart colours',att:'waiting',kind:'wait',cur:4,
+ inbox:'With PM for demo, no reply yet',age:'1d',
+ next:'nothing. Waiting on the PM',session:['idle','idle since yesterday'],repos:'ba-frontend',
+ gates:[['done','Moved'],['done','Moved'],['done','Moved'],['done','Moved → Ready for Demo'],['lock','0 of 1 rows · waiting on PM'],['lock']],
+ rows:{start:N('ok','Started'),val:N('ok','✓ Validated in dev',null,'pinned @ c88d120'),tst:N('ok','✓ Tested on stage',null,'pinned @ c88d120'),pm:N('wait','With PM','No reply yet'),done:N('lock','Done','0 of 1')},
+ lanes:[{ip:N('ok','ba-frontend #219','PR opened · 11/11'),cr:N('ok','#219 merged · in dev',null,'dev: meta-build #409 @ c88d120'),e2e:N('ok','In stage',null,'st: spinnaker @ c88d120'),prod:N('lock','In prod','Waits for release')}],
+ term:`<span class="sys">session 0e77… · Claude Code · /workspaces/DIG1-460 (ba-frontend) · idle since yesterday</span>
+
+<span class="p">&gt;</span> (cockpit · draft-pm-note) Draft a short note for the PM on what was done…
+<span class="t">●</span> sdlc.draft <span class="d">(kind: pm_note)</span>
+  Drafted. You posted it on 11/16 at 14:02.
+
+<span class="d">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-wait">WAITING ON PM</span> Row "PM approved" is waiting</h3>
+ <div class="sub">Your note was posted 11/16 14:02 · no newer comment</div>
+ <div class="card"><h4>Row action set · state "with PM"</h4><div class="row"><button class="btn ai">▶ draft-pm-nudge in session</button><button class="btn">Open Jira comments ↗</button></div>
+  <div class="hint">When the PM comments, the row becomes <b>PM feedback</b> and the ticket moves to "Needs you".</div></div>
+ <div class="card"><h4>Before Ready for Demo → Pending Deployment <em class="muted">0 of 1 rows</em></h4>
+  <ul class="list"><li class="n">PM approved</li></ul></div>`},
+
+{key:'DIG1-323',title:'Action Service Authentication',att:'done',kind:'ok',cur:7,
+ inbox:'Released',age:'3d',
+ next:'nothing. Released',session:['ended','ended · archived'],repos:'dtb-action-service',
+ gates:[['done','Moved'],['done','Moved'],['done','Moved'],['done','Moved'],['done','Moved'],['done','Moved']],
+ rows:{start:N('ok','Started'),val:N('ok','✓ Validated in dev'),tst:N('ok','✓ Tested on stage'),pm:N('ok','PM approved'),done:N('ok','Done')},
+ lanes:[{ip:N('ok','dtb-action-service #11','PR opened · 11/10'),cr:N('ok','#11 merged · in dev',null,'dev: jenkins #219 @ 51aa0c2'),e2e:N('ok','In stage',null,'st: jenkins #224 @ 51aa0c2'),prod:N('ok','In prod',null,'prod: jenkins #240 @ 8d02f7e')}],
+ term:`<span class="sys">session 4a90… · ended when the ticket reached Done · transcript kept with the ticket</span>`,
+ panel:`<h3><span class="kind k-ok">DONE</span> Released</h3><div class="sub">1 change · in prod since 11/14 (8d02f7e contains #11)</div>
+ <div class="card"><h4>Session</h4><div class="row"><button class="btn">Open transcript</button><button class="btn">Remove workspace</button></div></div>`}
+];
+T.forEach(t=>{t.status=t.cur>=7?'DONE':JIRA[t.cur].toUpperCase();t.jira='Jira: '+(t.cur>=7?'Done':JIRA[t.cur])+(t.back?' · moved back 1h ago':'')});
+const byKey=k=>T.find(t=>t.key===k);
+
+/* ---------- board renderer (shared) ---------- */
+const nc=n=>'n-'+n.c+(n.ai?' n-ai':'');
+const ni=n=>(n.ai?'<span class="aitag">✦ agent</span>':'')+`<b>${n.b}</b>`+(n.t||'')+(n.m?`<span class="mono" style="display:block">${n.m}</span>`:'');
+const live=n=>n&&!['lock','skip'].includes(n.c);
+const isDone=n=>['ok','skip'].includes(n.c);
+const nodeAt=(t,col,j)=>CHG[col]?t.lanes[j][CHG[col]]:t.rows[TKT[col]];
+function board(t){
+  const n=t.lanes.length, band=n+2, end=n+3;
+  const cnt=[];
+  let h=`<div class="board" style="grid-template-rows:auto repeat(${n},58px) 54px${t.rework?' 30px':''}">`;
+  h+=`<div class="bandline" style="grid-column:3/14;grid-row:${band}"><span>ticket rows</span></div>`;
+  for(let i=0;i<7;i++){
+    const c=1+i*2, cls=t.cur>=7?'':(i<t.cur?'':i===t.cur?'cur':'lock');
+    h+=`<div class="colbg ${cls}" style="grid-column:${c};grid-row:1/${end}"></div>`;
+    const rs=[...(CHG[i]?t.lanes.map(l=>l[CHG[i]]):[]),...(TKT[i]!==undefined?[t.rows[TKT[i]]]:[])];
+    const d=rs.filter(isDone).length; cnt[i]=[d,rs.length];
+    const sub=rs.length?`${d} of ${rs.length} rows`:'';
+    const tag=i===t.cur?'<span class="here">● status</span>':(i<t.cur||t.cur>=7)&&rs.length&&d===rs.length?'<span class="st">✓ done</span>':'';
+    h+=`<div class="ch ${cls==='cur'?'cur':cls==='lock'?'lockh':''}" style="grid-column:${c}"><b>${COLS[i]}</b>${sub}${sub&&tag?'<br>':''}${tag}</div>`;
+    if(SPAN.includes(i)){h+=`<div class="node tk ${nc(t.rows[TKT[i]])} span" style="grid-column:${c};grid-row:2/${end}">${ni(t.rows[TKT[i]])}</div>`;continue}
+    t.lanes.forEach((l,j)=>{h+=`<div class="node ${nc(l[CHG[i]])}" style="grid-column:${c};grid-row:${j+2}">${ni(l[CHG[i]])}</div>`});
+    if(TKT[i]!==undefined){const r=t.rows[TKT[i]];h+=`<div class="node tk ${nc(r)}" style="grid-column:${c};grid-row:${band};margin-top:6px">${ni(r)}</div>`}
+  }
+  for(let g=0;g<6;g++){
+    let wires='';
+    for(let j=0;j<n;j++){const s=nodeAt(t,g,j),d=nodeAt(t,g+1,j);wires+=`<div class="wire ${live(s)&&live(d)?'':'off'}"></div>`}
+    let [st,tip,lbl]=t.gates[g];
+    if(g===t.cur){const [d,tot]=cnt[g];tip=`${d} of ${tot} rows done`+(tip?' · '+tip:'');if(st==='pend')lbl=`${d}/${tot}`}
+    const icon=lbl||{done:'✓',lock:'🔒',ready:'➜',fail:'!',pend:'…'}[st];
+    h+=`<div class="gut" style="grid-column:${2+g*2};grid-row:2/${band};grid-template-rows:repeat(${n},58px)">${wires}<div class="gate g-${st}" data-tip="${tip||'Locked'}">${icon}</div></div>`;
+  }
+  if(t.rework) h+=`<div class="rework" style="grid-row:${end}"><div class="u"></div><div class="lbl">${t.rework}</div></div>`;
+  return h+'</div>';
+}
+const ATT={need:['NEEDS YOU','need'],working:['AGENT WORKING','ai'],waiting:['WAITING','wait'],done:['DONE','ok']};
+const KIND={fail:'FAILURE',perm:'PERMISSION',review:'REVIEW',ai:'WORKING',wait:'PM',ok:'DONE'};
+const agentChip=t=>{const [s,l]=t.session;return s==='working'?`<span class="pill ai"><span class="spin"></span> claude · ${l}</span>`:s==='ended'?`<span class="pill">claude · ${l}</span>`:`<span class="pill ai">● claude · ${l}</span>`};
+function mini(t){
+  let h='<span class="mini">';
+  for(let i=0;i<7;i++){const c=t.cur>=7||i<t.cur?'g':i===t.cur?(t.kind==='fail'?'r':t.kind==='ai'?'v':t.att==='need'?'a':'b'):'';h+=`<span class="${c}"></span>`}
+  return h+'</span>';
+}
+
+/* ---------- My tickets ---------- */
+const ORDER={need:0,working:1,waiting:2,done:3};
+const PRI={fail:0,perm:1,review:2};
+const sorted=()=>[...T].sort((a,b)=>ORDER[a.att]-ORDER[b.att]||(PRI[a.kind]??9)-(PRI[b.kind]??9));
+let filter='all';
+function renderFilters(){
+  const c=k=>T.filter(t=>t.att===k).length;
+  const F=[['all','All',T.length],['need','Needs you',c('need')],['working','Agent working',c('working')],['waiting','Waiting',c('waiting')],['done','Done',c('done')]];
+  document.getElementById('filters').innerHTML=F.map(([k,l,n])=>`<span class="${filter===k?'on':''}" data-f="${k}">${l}<b>${n}</b></span>`).join('');
+  document.querySelectorAll('#filters span').forEach(s=>s.onclick=()=>{filter=s.dataset.f;renderFilters();renderTickets()});
+}
+function renderTickets(){
+  document.getElementById('tlist').innerHTML=sorted().filter(t=>filter==='all'||t.att===filter).map(t=>{
+    const cls=t.kind==='fail'?'fail':t.att==='need'?'need':t.att==='working'?'working':'';
+    return `<div class="tcard ${cls}" data-k="${t.key}">
+      <div class="tc-h"><div class="tc-title"><span class="key">${t.key}</span>${t.title}</div>
+        <div class="right">${t.att==='need'?`<span class="kind k-${t.kind}">${KIND[t.kind]}</span>`:''}${agentChip(t)}<span class="pill st ${t.att==='done'?'done':''}">${t.status}</span></div></div>
+      <div class="tc-board"><div class="boardwrap">${board(t)}</div></div>
+      <div class="tc-f"><span class="nx">● Next: <b>${t.next}</b></span><span class="dim">· repos: ${t.repos}</span><span class="open">Open in cockpit →</span></div>
+    </div>`}).join('');
+  document.querySelectorAll('.tcard').forEach(c=>c.onclick=e=>{if(!e.target.closest('.gate'))openTicket(c.dataset.k)});
+}
+
+/* ---------- Cockpit ---------- */
+let current='DIG1-440';
+function renderInbox(){
+  const groups=[['need','Needs you'],['working','Agents working'],['waiting','Waiting on others'],['done','Done this sprint']];
+  document.getElementById('inbox').innerHTML=groups.map(([g,l])=>{
+    const items=sorted().filter(t=>t.att===g); if(!items.length) return '';
+    return `<div class="ib-h">${l} <span class="badge ${g==='need'?'warn':''}">${items.length}</span></div>`+items.map(t=>`
+      <div class="item ${t.key===current?'sel':''} ${g==='done'?'done':''}" data-k="${t.key}">
+        <div class="r1"><span class="key">${t.key}</span>${g==='working'?`<span class="muted" style="font-size:11px"><span class="spin"></span> ${t.age}</span>`:`<span class="kind k-${t.kind}">${KIND[t.kind]}</span>`}</div>
+        <div class="msg">${t.inbox}</div>
+        <div class="r3">${mini(t)}<span>${t.age}</span></div></div>`).join('');
+  }).join('');
+  document.querySelectorAll('#inbox .item').forEach(i=>i.onclick=()=>switchTicket(i.dataset.k));
+}
+function renderCockpit(){
+  const t=byKey(current), [al]=ATT[t.att];
+  document.getElementById('c-head').innerHTML=`<div>
+      <span class="backlink" onclick="backToTickets()">← All tickets</span>
+      <h1 id="c-title"><span class="key">${t.key}</span>${t.title}</h1>
+      <div class="meta"><span class="pill ${t.att==='need'?'need':''}">${al}</span><span class="pill ${t.back?'back':''}">${t.jira}</span>${agentChip(t)}<span class="pill mono">/workspaces/${t.key} · ${t.repos}</span></div>
+      <div class="next">● Next: <b>${t.next}</b></div></div>
+    <div class="acts"><button class="btn">Open in Jira ↗</button><button class="btn">Open workspace</button><button class="btn">⋯</button></div>`;
+  document.getElementById('c-board').innerHTML=`<div class="boardwrap">${board(t)}</div>`;
+  const [s,l]=t.session, col=s==='perm'?'var(--warn-tx)':s==='ended'||s==='idle'?'var(--muted)':'var(--ai)';
+  document.getElementById('c-tabs').innerHTML=`<span class="ctab">✦ ${t.key} · Claude Code</span><span class="dim" style="font-size:11.5px">one session per ticket · the real CLI in a PTY</span>
+    <span class="cstat"><span style="color:${col}">● ${l}</span><span class="dim">ctx 38% · $0.42</span></span>`;
+  document.getElementById('c-harness').innerHTML=`harness <span class="hb ok">mcp: sdlc ✓</span><span class="hb ok">hooks: 4 ✓</span><span class="hb ok">CLAUDE.md ← guardrails ✓</span><span class="hb ok">policy: deny merge ✓</span><span class="hb">resume on restart</span>`;
+  document.getElementById('c-term').innerHTML=t.term;
+  document.getElementById('c-panel').innerHTML=t.panel;
+  renderInbox();
+}
+
+/* ---------- navigation + view transitions ---------- */
+function setScreen(id){
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.s===id));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
+}
+const vt=fn=>document.startViewTransition?document.startViewTransition(fn):(fn(),{finished:Promise.resolve()});
+function openTicket(key){
+  const card=document.querySelector(`.tcard[data-k="${key}"]`);
+  const b=card.querySelector('.tc-board'), h=card.querySelector('.tc-title');
+  b.style.viewTransitionName='board'; h.style.viewTransitionName='ttitle';
+  vt(()=>{
+    b.style.viewTransitionName=''; h.style.viewTransitionName='';
+    current=key; setScreen('cockpit'); renderCockpit();
+    document.getElementById('c-title').style.viewTransitionName='ttitle';
+  }).finished.then(()=>{const ct=document.getElementById('c-title'); if(ct) ct.style.viewTransitionName=''});
+}
+function backToTickets(){
+  document.getElementById('c-title').style.viewTransitionName='ttitle';
+  let b,h;
+  vt(()=>{
+    document.getElementById('c-title').style.viewTransitionName='';
+    setScreen('tickets'); renderTickets();
+    const card=document.querySelector(`.tcard[data-k="${current}"]`);
+    if(card){b=card.querySelector('.tc-board');h=card.querySelector('.tc-title');b.style.viewTransitionName='board';h.style.viewTransitionName='ttitle';card.scrollIntoView({block:'center'})}
+  }).finished.then(()=>{if(b){b.style.viewTransitionName='';h.style.viewTransitionName=''}});
+}
+function switchTicket(key){
+  if(key===current) return;
+  document.getElementById('c-title').style.viewTransitionName='ttitle';
+  vt(()=>{current=key;renderCockpit();document.getElementById('c-title').style.viewTransitionName='ttitle'})
+   .finished.then(()=>{document.getElementById('c-title').style.viewTransitionName=''});
+}
+document.querySelectorAll('.tabs button').forEach(btn=>btn.onclick=()=>vt(()=>{setScreen(btn.dataset.s);if(btn.dataset.s==='cockpit')renderCockpit()}));
+
+/* ---------- editor: rows + gates ---------- */
+const R={
+ merged:{kind:'Row',t:'Approved & merged',col:'Code Review',scope:'change',done:'change.merged',
+  sa:[['draft / CI failing','open(change.checks)'],['behind base','code.update_branch'],['conflict','▶ resolve-conflict in session'],['address feedback','▶ address-review-feedback in session'],['reply drafted','code.comment(draft) · you confirm'],['approved, checks green','code.merge'],['merged','open(change)']],
+  y:`<span class="k">code_review</span>:              <span class="c"># Jira column, read-only</span>
+  <span class="k">rows</span>:
+    - <span class="k">id</span>: merged
+      <span class="k">scope</span>: change
+      <span class="k">done_when</span>: <span class="s">change.merged</span>
+      <span class="k">actions</span>:
+        <span class="k">behind</span>:   [code.update_branch]
+        <span class="k">conflict</span>: [{ <span class="k">session</span>: <span class="s">prompts/resolve-conflict.md</span> }]
+        <span class="k">feedback</span>: [{ <span class="k">session</span>: <span class="s">prompts/address-review-feedback.md</span> }]
+        <span class="k">drafted</span>:  [code.comment]   <span class="c"># agent drafts, you confirm</span>
+        <span class="k">approved</span>: [code.merge]`},
+ indev:{kind:'Row',t:'In dev',col:'Code Review',scope:'change',done:'env("dev").contains(change)',
+  sa:[['waiting','none (waits for merge)'],['deploying','open(run)'],['failed','open(run) · ▶ diagnose-deploy-failure in session'],['in dev','copy(commit)']],
+  y:`    - <span class="k">id</span>: in_dev
+      <span class="k">scope</span>: change
+      <span class="k">done_when</span>: <span class="s">env("dev").contains(change)</span>
+      <span class="c"># latest successful deploy run for dev (per repo, project.yaml)</span>
+      <span class="c"># + git merge-base --is-ancestor(change.merge_commit, run.commit)</span>
+      <span class="k">actions</span>:
+        <span class="k">deploying</span>: [open(run)]
+        <span class="k">failed</span>:    [open(run), { <span class="k">session</span>: <span class="s">prompts/diagnose-deploy-failure.md</span> }]`},
+ val:{kind:'Row',t:'Validated in dev',col:'Code Review',scope:'ticket',done:'attested("validated_dev", pin: env("dev").commits(ticket.repos))',
+  sa:[['not ticked','attest (tick the box)'],['stale (dev commit changed)','attest again'],['ticked','untick']],
+  y:`    - <span class="k">id</span>: validated_dev
+      <span class="k">scope</span>: ticket
+      <span class="k">done_when</span>: <span class="s">attested("validated_dev")</span>
+      <span class="k">pin</span>: <span class="s">env("dev").commits(ticket.repos)</span>   <span class="c"># stale when any changes</span>
+      <span class="k">actions</span>: { <span class="k">open</span>: [attest], <span class="k">stale</span>: [attest] }`},
+ opened:{kind:'Row',t:'PR opened',col:'In Progress',scope:'change',done:'change.ready  (exists, not draft, CI green)',
+  sa:[['no change yet','▶ build-ticket in session'],['draft','open(change)'],['CI failing','open(change.checks) · ▶ fix-ci in session']],
+  y:`<span class="k">in_progress</span>:
+  <span class="k">rows</span>:
+    - <span class="k">id</span>: opened
+      <span class="k">scope</span>: change
+      <span class="k">done_when</span>: <span class="s">change.ready</span>
+      <span class="k">actions</span>:
+        <span class="k">none</span>:       [{ <span class="k">session</span>: <span class="s">prompts/build-ticket.md</span> }]
+        <span class="k">ci_failing</span>: [open(change.checks), { <span class="k">session</span>: <span class="s">prompts/fix-ci.md</span> }]`},
+ instage:{kind:'Row',t:'In stage',col:'E2E Testing',scope:'change',done:'env("stage").contains(change)',
+  sa:[['waiting promotion (manual)','open(env.stage.promote_link) · copy(commit)'],['deploying','open(run)'],['failed','open(run) · ▶ diagnose-deploy-failure in session'],['n/a (no stage env)','counts as done']],
+  y:`<span class="k">e2e_testing</span>:
+  <span class="k">rows</span>:
+    - <span class="k">id</span>: in_stage
+      <span class="k">scope</span>: change
+      <span class="k">done_when</span>: <span class="s">env("stage").contains(change)</span>
+      <span class="k">actions</span>:
+        <span class="k">waiting</span>: [open(env.promote_link), copy(change.commit)]
+        <span class="k">failed</span>:  [open(run), { <span class="k">session</span>: <span class="s">prompts/diagnose-deploy-failure.md</span> }]`},
+ tested:{kind:'Row',t:'Tested on stage',col:'E2E Testing',scope:'ticket',done:'attested("tested_stage", pin: env("stage").commits(ticket.repos))',sa:[['not ticked','attest'],['stale','attest again']],
+  y:`    - <span class="k">id</span>: tested_stage
+      <span class="k">scope</span>: ticket
+      <span class="k">done_when</span>: <span class="s">attested("tested_stage")</span>
+      <span class="k">pin</span>: <span class="s">env("stage").commits(ticket.repos)</span>`},
+ pm:{kind:'Row',t:'PM approved',col:'Ready for Demo',scope:'ticket',done:'attested("pm_ok") || tracker.status_after("Ready for Demo")',
+  sa:[['with PM (no reply)','▶ draft-pm-nudge in session'],['PM feedback (last comment not mine)','▶ address-pm-feedback in session'],['reply drafted','copy(draft): tracker comments come after v1'],['PM ok','attest']],
+  y:`<span class="k">ready_for_demo</span>:
+  <span class="k">rows</span>:
+    - <span class="k">id</span>: pm_ok
+      <span class="k">scope</span>: ticket
+      <span class="k">done_when</span>: <span class="s">attested("pm_ok") || tracker.status_after("Ready for Demo")</span>
+      <span class="k">states_from</span>: <span class="s">tracker.reply_from(role: pm)</span>
+      <span class="k">actions</span>:
+        <span class="k">feedback</span>: [{ <span class="k">session</span>: <span class="s">prompts/address-pm-feedback.md</span> }]
+        <span class="k">drafted</span>:  [copy(draft)]`},
+ inprod:{kind:'Row',t:'In prod',col:'Pending Deployment',scope:'change',done:'env("prod").contains(change)',sa:[['waiting release','none: released by your process'],['in prod','copy(commit)']],
+  y:`<span class="k">pending_deployment</span>:
+  <span class="k">rows</span>:
+    - <span class="k">id</span>: in_prod
+      <span class="k">scope</span>: change
+      <span class="k">done_when</span>: <span class="s">env("prod").contains(change)</span>`},
+ start:{kind:'Row',t:'Start',col:'To Do',scope:'ticket',done:'tracker.status_after("To Do")',sa:[['not started','tracker.move("In Progress") · ▶ build-ticket in session']],
+  y:`<span class="k">to_do</span>:
+  <span class="k">rows</span>:
+    - <span class="k">id</span>: start
+      <span class="k">scope</span>: ticket
+      <span class="k">done_when</span>: <span class="s">tracker.status_after("To Do")</span>
+      <span class="k">actions</span>:
+        <span class="k">open</span>: [tracker.move("In Progress"), { <span class="k">session</span>: <span class="s">prompts/build-ticket.md</span> }]`},
+ done:{kind:'Row',t:'Done',col:'Done',scope:'ticket',done:'tracker.status_in(["Done","Released"])',sa:[['—','read-only: moved by your release process']],
+  y:`<span class="k">done</span>:
+  <span class="k">rows</span>:
+    - <span class="k">id</span>: done
+      <span class="k">scope</span>: ticket
+      <span class="k">done_when</span>: <span class="s">tracker.status_in(["Done", "Released"])</span>`}
+};
+['To Do','In Progress','Code Review','End to End Testing','Ready for Demo','Pending Deployment','Done'].forEach((c,i,a)=>{if(i<6)R['g'+i]={kind:'Gate',t:`${c} → ${a[i+1]}`,col:'between columns',scope:'gate',done:`all rows in "${c}" are done  (fixed rule)`,
+  sa:[['ready (all rows done)',`tracker.move("${a[i+1]}")`+(i===2?' · ▶ promote-checklist in session':i===1?'':'')],['moving back','tracker.move(earliest unfinished column), offered automatically']],
+  y:`<span class="k">gates</span>:
+  <span class="k">${a[i].toLowerCase().replace(/ /g,'_')}</span>:            <span class="c"># → ${a[i+1]}</span>
+    <span class="k">actions</span>:
+      - <span class="s">tracker.move("${a[i+1]}")</span>   <span class="c"># always, cannot be removed</span>${i===2?`
+      - { <span class="k">session</span>: <span class="s">prompts/promote-checklist.md</span> }`:''}
+    <span class="c"># guard is fixed: every row in the column is done</span>`}});
+function showRow(id){
+  const r=R[id];
+  document.querySelectorAll('.erow,.egate span').forEach(e=>e.classList.toggle('sel',e.dataset.r===id));
+  document.getElementById('side').innerHTML=`
+   <div class="muted" style="font-size:11px;letter-spacing:.6px;text-transform:uppercase">${r.kind} · ${r.col}</div>
+   <h3>${r.t}</h3>
+   ${r.kind==='Row'?`<div class="fld"><label>Scope</label><span class="seg"><span class="${r.scope==='change'?'on':''}">per change</span><span class="${r.scope==='ticket'?'on':''}">ticket</span></span></div>`:''}
+   <div class="fld"><label>${r.kind==='Gate'?'Opens when':'Done when (built-in check)'}</label><div class="inp code ${r.kind==='Gate'?'ro':''}">${r.done}</div>
+     <div class="hint">${r.kind==='Gate'?'Not configurable: the ticket moves only when the whole column is done.':'Checks are built-in code: change.*, env(E).contains, attested, tracker.*'}</div></div>
+   <div class="fld"><label>Action set per state (run on click)</label><table class="sa">${r.sa.map(([s,a])=>`<tr><td>${s}</td><td><code>${a}</code></td></tr>`).join('')}</table>
+     <div class="hint">v1 actions: tracker.move · code.merge · code.merge_all · code.update_branch · code.comment · open · copy · ▶ session prompt</div></div>
+   <div class="fld"><label>pipeline.yaml</label><div class="yaml">${r.y}</div></div>`;
+}
+document.querySelectorAll('.erow,.egate span').forEach(e=>e.onclick=()=>showRow(e.dataset.r));
+
+/* ---------- init ---------- */
+renderFilters(); renderTickets(); showRow('merged');
+const [hs,hk]=location.hash.slice(1).split('/');
+if(hk&&byKey(hk)) current=hk;
+renderCockpit();
+if(['tickets','cockpit','editor','concepts'].includes(hs)) setScreen(hs);
+</script>
+</body>
+</html>

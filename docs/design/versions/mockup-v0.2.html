@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ticket Cockpit: design draft v0.2</title>
+<style>
+:root{
+  --bg:#0a0e16;--panel:#0e1420;--panel2:#121a29;--line:#1c2638;--line2:#2a3850;
+  --text:#d6deeb;--muted:#8391aa;--dim:#4c5971;
+  --ok-bg:#0e2818;--ok-bd:#2f8f46;--ok-tx:#7ee2a0;
+  --warn-bg:#30250b;--warn-bd:#c9962a;--warn-tx:#f3cd6a;
+  --fail-bg:#371219;--fail-bd:#e5534b;--fail-tx:#ff8a84;
+  --blue:#3b82f6;--blue-bg:#0e1b33;--blue-tx:#86b6ff;
+  --ai:#a78bfa;--ai-bg:#1d1636;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)} .dim{color:var(--dim)}
+
+/* top bar */
+.top{height:48px;display:flex;align-items:center;gap:18px;padding:0 16px;border-bottom:1px solid var(--line);background:#0b111c;view-transition-name:topbar}
+.logo{font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+.logo i{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,var(--blue),var(--ai));display:inline-block}
+.project{padding:4px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--panel)}
+.tabs{display:flex;gap:4px;margin-left:8px}
+.tabs button{background:none;border:0;padding:14px 10px;color:var(--muted);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--text);border-bottom-color:#e8705a}
+.conns{margin-left:auto;display:flex;gap:10px;align-items:center;color:var(--muted);font-size:12px}
+.conn{display:flex;align-items:center;gap:5px;padding:3px 8px;border:1px solid var(--line);border-radius:999px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok-bd);display:inline-block}
+.dot.warn{background:var(--warn-bd)} .dot.ai{background:var(--ai)}
+.screen{display:none;height:calc(100% - 48px)} .screen.on{display:flex}
+
+/* shared bits */
+.badge{font-size:11px;padding:0 7px;border-radius:999px;background:var(--line2);color:var(--text)}
+.badge.warn{background:var(--warn-bd);color:#1a1405;font-weight:700}
+.kind{font-size:10.5px;padding:1px 6px;border-radius:4px;font-weight:600;letter-spacing:.3px;white-space:nowrap}
+.k-fail{background:var(--fail-bg);color:var(--fail-tx);border:1px solid var(--fail-bd)}
+.k-perm{background:var(--warn-bg);color:var(--warn-tx);border:1px solid var(--warn-bd)}
+.k-review,.k-ai{background:var(--ai-bg);color:var(--ai);border:1px solid #5b47a8}
+.k-wait{background:#151d2c;color:var(--muted);border:1px solid var(--line2)}
+.k-ok{background:var(--ok-bg);color:var(--ok-tx);border:1px solid var(--ok-bd)}
+.mini{display:flex;gap:3px;align-items:center}
+.mini span{width:18px;height:5px;border-radius:2px;background:var(--line2)}
+.mini .g{background:var(--ok-bd)} .mini .b{background:var(--blue)} .mini .r{background:var(--fail-bd)} .mini .v{background:var(--ai)} .mini .a{background:var(--warn-bd)}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--ai);border-right-color:transparent;border-radius:50%;animation:sp 1s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.btn{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 10px}
+.btn:hover{border-color:#3d4f6e}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.ai{background:var(--ai-bg);border-color:#5b47a8;color:#d9ccff}
+.btn.bad{border-color:#7a2b2b;color:var(--fail-tx)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.pill{padding:2px 8px;border-radius:999px;border:1px solid var(--line2);background:var(--panel2);color:var(--muted);white-space:nowrap}
+.pill.need{background:var(--warn-bd);color:#1a1405;border-color:var(--warn-bd);font-weight:700;letter-spacing:.4px}
+.pill.ai{color:var(--ai);border-color:#4a3a8c;background:var(--ai-bg)}
+.pill.back{color:var(--warn-tx);border-color:#6e5418}
+.pill.st{color:var(--blue-tx);border-color:#1f3d6e;background:#0d1a31;font-weight:700;letter-spacing:.6px;font-size:11.5px;border-radius:5px}
+.pill.st.done{color:var(--ok-tx);border-color:#1f5530;background:#0d2216}
+
+/* ===== board (shared by My tickets + Cockpit) ===== */
+.boardwrap{padding:12px 18px 6px;overflow-x:auto}
+.board{display:grid;min-width:1080px;
+  grid-template-columns:104px 44px minmax(180px,1.3fr) 44px minmax(150px,1fr) 44px minmax(150px,1fr) 44px 132px 44px 112px 44px 92px;row-gap:6px}
+.colbg{border:1px solid var(--line);border-radius:10px;background:#0c121d;margin:0 -6px}
+.colbg.cur{border-color:var(--blue);background:linear-gradient(180deg,#0f1f3d 0,#0c1528 100%)}
+.colbg.lock{border-style:dashed;background:transparent;opacity:.8}
+.ch{grid-row:1;text-align:center;padding:7px 2px 6px;font-size:12px;color:var(--muted);line-height:1.35}
+.ch b{display:block;font-weight:500;color:var(--text)}
+.ch.cur,.ch.cur b{color:var(--blue-tx)}
+.ch .st{color:var(--ok-tx);font-size:11.5px}
+.ch .st.todo{color:var(--dim)}
+.ch.lockh,.ch.lockh b{color:var(--dim)}
+.node{border-radius:8px;padding:5px 10px;border:1px solid;font-size:12px;line-height:1.3;position:relative;align-self:stretch;margin:0 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.node b{display:block;font-size:12.5px}
+.node .mono{font-size:11.5px}
+.n-ok{background:var(--ok-bg);border-color:var(--ok-bd);color:#cfe9d7} .n-ok b{color:var(--ok-tx)}
+.n-warn{background:var(--warn-bg);border-color:var(--warn-bd);color:#f1dfb0} .n-warn b{color:var(--warn-tx)}
+.n-fail{background:var(--fail-bg);border-color:var(--fail-bd);color:#f5c9c6} .n-fail b{color:var(--fail-tx)}
+.n-fail .amb{color:var(--warn-tx)}
+.n-wait{background:#101b30;border-color:#35588f;color:#b9cdee} .n-wait b{color:var(--blue-tx)}
+.n-lock,.n-skip{border-style:dashed;border-color:var(--line2);color:var(--dim);background:transparent}
+.n-lock b,.n-skip b{color:#66748d}
+.n-ai{box-shadow:0 0 0 2px var(--ai),0 0 18px -4px var(--ai)}
+.aitag{position:absolute;top:5px;right:6px;font-size:10px;color:#e0d6ff;background:#4b3a91;padding:0 6px;border-radius:999px;font-weight:600}
+.span{align-self:center}
+.gut{position:relative;display:grid;row-gap:6px}
+.wire{position:relative}
+.wire::before{content:"";position:absolute;left:2px;right:6px;top:50%;border-top:1.5px solid var(--ok-bd);opacity:.7}
+.wire::after{content:"";position:absolute;right:2px;top:calc(50% - 4px);border:4px solid transparent;border-left:6px solid var(--ok-bd);opacity:.7}
+.wire.off::before{border-top:1.5px dashed var(--dim)} .wire.off::after{border-left-color:var(--dim)}
+.gate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:1.5px solid;background:var(--bg);z-index:2;cursor:pointer}
+.g-done{border-color:var(--ok-bd);color:var(--ok-tx)}
+.g-pend{border-color:var(--warn-bd);color:var(--warn-tx);font-size:10px}
+.g-fail{border-color:var(--fail-bd);color:var(--fail-tx)}
+.g-lock{border-color:var(--line2);color:var(--dim);border-style:dashed}
+.g-ready{border-color:var(--blue);color:#fff;background:var(--blue);animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6)}100%{box-shadow:0 0 0 10px rgba(59,130,246,0)}}
+.gate:hover::after{content:attr(data-tip);position:absolute;bottom:34px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#1b2436;border:1px solid var(--line2);color:var(--text);padding:4px 8px;border-radius:6px;font-weight:400;font-size:11.5px}
+.rework{grid-column:3/10;position:relative}
+.rework .u{position:absolute;left:90px;right:66px;top:0;height:18px;border:1.5px dashed var(--warn-bd);border-top:0;border-radius:0 0 10px 10px;opacity:.85}
+.rework .u::before{content:"";position:absolute;left:-5.5px;top:-6px;border:4.5px solid transparent;border-bottom:7px solid var(--warn-bd)}
+.rework .lbl{position:absolute;left:50%;top:9px;transform:translateX(-50%);background:var(--bg);padding:0 8px;color:var(--warn-tx);font-size:11.5px;white-space:nowrap}
+
+/* ===== My tickets ===== */
+#tickets{flex-direction:column;overflow:auto}
+.tl{padding:18px 26px 40px;max-width:1700px;width:100%;margin:0 auto}
+.tl-top{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.tl-top h2{margin:0;font-size:18px}
+.tl-sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+.filters{display:flex;gap:6px;margin-left:16px}
+.filters span{padding:4px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);cursor:pointer;font-size:12px}
+.filters span.on{background:var(--panel2);color:var(--text);border-color:#3d4f6e}
+.filters span b{margin-left:4px;color:var(--text)}
+.tcard{border:1px solid var(--line);border-radius:14px;background:#0c111b;margin-bottom:16px;cursor:pointer;transition:border-color .2s,transform .2s var(--ease),box-shadow .2s}
+.tcard:hover{border-color:#34507f;transform:translateY(-2px);box-shadow:0 10px 30px -12px rgba(59,130,246,.35)}
+.tc-h{display:flex;align-items:center;gap:10px;padding:14px 18px 0}
+.tc-title{font-size:15px;font-weight:600;display:flex;gap:10px;align-items:baseline;width:fit-content}
+.tc-title .key{color:var(--blue-tx)}
+.tc-h .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tc-f{display:flex;align-items:center;gap:10px;padding:2px 18px 12px;font-size:12px}
+.tc-f .nx{color:var(--warn-tx)} .tc-f .nx b{color:var(--text);font-weight:500}
+.tc-f .open{margin-left:auto;color:var(--blue-tx);opacity:0;transform:translateX(-6px);transition:.2s var(--ease)}
+.tcard:hover .open{opacity:1;transform:none}
+.tcard.need{border-left:3px solid var(--warn-bd)}
+.tcard.fail{border-left:3px solid var(--fail-bd)}
+.tcard.working{border-left:3px solid var(--ai)}
+
+/* ===== Cockpit ===== */
+.inbox{width:300px;flex:none;border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 10px;view-transition-name:inbox}
+.ib-h{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:14px 6px 6px}
+.ib-h:first-child{margin-top:2px}
+.item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--panel2);cursor:pointer}
+.item:hover{border-color:var(--line2)}
+.item.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset;background:var(--blue-bg)}
+.item .r1{display:flex;justify-content:space-between;align-items:center}
+.item .key{color:var(--blue-tx);font-weight:600}
+.item .msg{margin:3px 0 6px}
+.item .r3{display:flex;justify-content:space-between;align-items:center;margin-top:2px;font-size:11px;color:var(--dim)}
+.item.done{opacity:.6}
+.focus{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.thead{padding:12px 18px 10px;display:flex;align-items:flex-start;gap:14px;border-bottom:1px solid var(--line)}
+.backlink{color:var(--muted);font-size:12px;cursor:pointer;margin-bottom:6px;display:inline-block}
+.backlink:hover{color:var(--text)}
+.thead h1{font-size:16px;margin:0 0 6px;font-weight:600;width:fit-content}
+.thead h1 .key{color:var(--blue-tx);margin-right:8px}
+.meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px}
+.thead .acts{margin-left:auto;display:flex;gap:6px}
+.next{margin-top:8px;font-size:12px;color:var(--warn-tx)}
+.next b{color:var(--text);font-weight:500}
+#c-board{view-transition-name:board}
+.legend{display:flex;gap:16px;font-size:11.5px;color:var(--muted);padding:2px 18px 8px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border-radius:50%;border:1.5px solid;display:inline-block}
+.work{flex:1;min-height:300px;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,1fr);border-top:1px solid var(--line);view-transition-name:work}
+.console{display:flex;flex-direction:column;background:#070a11;border-right:1px solid var(--line);min-height:0}
+.ctabs{display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line);background:#0a0f19;height:34px;flex:none}
+.ctab{padding:6px 10px;border-radius:6px 6px 0 0;color:var(--text);font-size:12px;background:#070a11;border:1px solid var(--line);border-bottom-color:#070a11;margin-bottom:-1px;align-self:flex-end}
+.cstat{margin-left:auto;font-size:11.5px;display:flex;gap:10px;align-items:center}
+.harness{display:flex;gap:6px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted);flex:none;flex-wrap:wrap}
+.hb{padding:1px 7px;border-radius:4px;border:1px solid var(--line2);font-family:var(--mono);font-size:10.5px}
+.hb.ok{color:var(--ok-tx);border-color:#1f5530}
+.term{flex:1;overflow:auto;padding:10px 14px;white-space:pre-wrap;font:12px/1.55 var(--mono);color:#c8d1e0}
+.term .p{color:#7fb2ff} .term .t{color:var(--ai)} .term .ok{color:var(--ok-tx)} .term .d{color:var(--dim)} .term .y{color:var(--warn-tx)} .term .r{color:var(--fail-tx)}
+.term .sys{color:#5f6f8c;border-left:2px solid #2c3a55;padding-left:8px;display:inline-block}
+.caret{display:inline-block;width:7px;height:14px;background:#c8d1e0;vertical-align:-2px;animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+.quick{display:flex;gap:6px;padding:6px 10px;border-top:1px solid var(--line);flex-wrap:wrap;flex:none;align-items:center}
+.chip{font-size:11.5px;padding:3px 8px;border-radius:999px;border:1px solid #4a3a8c;color:#d9ccff;background:var(--ai-bg);cursor:pointer}
+.chip.plain{border-color:var(--line2);color:var(--muted);background:transparent}
+.cp{overflow:auto;padding:12px 16px;background:var(--panel);min-height:0}
+.cp h3{margin:0 0 2px;font-size:13px;display:flex;gap:8px;align-items:center}
+.cp .sub{color:var(--muted);font-size:12px;margin-bottom:10px}
+.card{border:1px solid var(--line2);border-radius:8px;background:var(--panel2);padding:10px 12px;margin-bottom:10px}
+.card h4{margin:0 0 6px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.card h4 em{font-style:normal;text-transform:none;letter-spacing:0}
+.list{margin:0;padding:0;list-style:none;font-size:12.5px}
+.list li{padding:2px 0;display:flex;gap:8px}
+.list li::before{width:12px;flex:none}
+.list .y::before{content:"✓";color:var(--ok-tx)}
+.list .n::before{content:"○";color:var(--warn-tx)}
+.list .x::before{content:"✕";color:var(--fail-tx)}
+.list .i::before{content:"•";color:var(--muted)}
+.draft{border:1px dashed #5b47a8;border-radius:6px;padding:8px 10px;background:#120f22;color:#e3dcff;font-size:12.5px}
+.codebox{font:12px var(--mono);background:#070a11;border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:#e6edf7}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.hint{font-size:11.5px;color:var(--dim);margin-top:6px}
+.eff{font-size:12px;color:var(--muted);margin-top:6px}
+.eff code{color:var(--text);background:#0b111c;padding:0 4px;border-radius:3px}
+
+/* view transitions */
+::view-transition-group(board),::view-transition-group(ttitle){animation-duration:.55s;animation-timing-function:var(--ease)}
+::view-transition-old(board),::view-transition-new(board){height:100%;width:100%;object-fit:cover;object-position:left top}
+::view-transition-new(work){animation:vt-up .5s .08s var(--ease) both}
+::view-transition-old(work){animation:vt-down .28s ease both}
+::view-transition-new(inbox){animation:vt-left .5s var(--ease) both}
+::view-transition-old(inbox){animation:vt-left-out .28s ease both}
+::view-transition-old(root){animation:vt-fade-out .22s ease both}
+::view-transition-new(root){animation:vt-fade-in .4s .1s ease both}
+@keyframes vt-up{from{transform:translateY(80px);opacity:0}}
+@keyframes vt-down{to{transform:translateY(80px);opacity:0}}
+@keyframes vt-left{from{transform:translateX(-60px);opacity:0}}
+@keyframes vt-left-out{to{transform:translateX(-60px);opacity:0}}
+@keyframes vt-fade-out{to{opacity:0}}
+@keyframes vt-fade-in{from{opacity:0}}
+
+/* ===== editor ===== */
+.ed{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 400px;min-width:0}
+.canvaswrap{overflow:auto;padding:16px 18px;position:relative}
+.edbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.edbar .file{font:12px var(--mono);color:var(--muted);margin-right:auto}
+.edbar .file b{color:var(--ok-tx);font-weight:400}
+.edbar .file .br{color:var(--ai)}
+.canvas{position:relative;width:1110px;height:330px;border:1px solid var(--line);border-radius:10px;background-image:radial-gradient(#1a2335 1px,transparent 1px);background-size:16px 16px}
+.stg{position:absolute;top:96px;width:110px;height:120px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2);padding:8px 9px;font-size:12px}
+.stg b{display:block;margin-bottom:5px}
+.stg .tg{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+.stg .gt{color:var(--ok-tx)} .stg .u{color:var(--blue-tx)}
+.arrowchip{position:absolute;transform:translate(-50%,-50%);font-size:10.5px;padding:2px 7px;border-radius:999px;border:1px solid var(--line2);background:var(--bg);color:var(--muted);cursor:pointer;white-space:nowrap;z-index:2}
+.arrowchip:hover{border-color:#4d6288;color:var(--text)}
+.arrowchip.sel{border-color:var(--blue);color:#fff;background:var(--blue)}
+.arrowchip.rw{border-color:#6e5418;color:var(--warn-tx)}
+.arrowchip.rw.sel{background:var(--warn-bd);color:#1a1405;border-color:var(--warn-bd)}
+.arrowchip.sk{border-style:dashed}
+.side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:14px 16px}
+.side h3{margin:0 0 2px;font-size:14px}
+.fld{margin:12px 0}
+.fld label{display:block;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.inp{border:1px solid var(--line2);background:#0b111c;border-radius:6px;padding:6px 9px;font-size:12.5px}
+.inp.code{font-family:var(--mono);font-size:12px;white-space:pre-wrap}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+.seg span{padding:4px 10px;font-size:12px;color:var(--muted);border-right:1px solid var(--line2)}
+.seg span:last-child{border-right:0}
+.seg span.on{background:var(--blue);color:#fff}
+.seg span.na{opacity:.4}
+.yaml{font:11.5px/1.55 var(--mono);background:#070a11;border:1px solid var(--line);border-radius:8px;padding:10px 12px;white-space:pre;overflow:auto;color:#c8d1e0}
+.yaml .k{color:#7fb2ff} .yaml .s{color:var(--ok-tx)} .yaml .c{color:var(--dim)}
+.below{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;max-width:1110px}
+table.repos{width:100%;border-collapse:collapse;font-size:12px}
+table.repos td,table.repos th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+table.repos th{color:var(--muted);font-weight:500;font-size:11px}
+
+/* ===== concepts ===== */
+.cwrap{flex:1;overflow:auto;padding:22px 26px}
+.layers{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:1240px}
+.layer{border:1px solid var(--line2);border-radius:12px;padding:12px 14px;background:var(--panel)}
+.layer h3{margin:0 0 4px;font-size:12px;letter-spacing:.7px;text-transform:uppercase}
+.layer .lead{color:var(--muted);font-size:12px;margin-bottom:10px}
+.cbox{border:1px solid var(--line2);border-radius:8px;padding:7px 10px;margin:6px 0;background:var(--panel2)}
+.cbox b{display:block}
+.cbox span{color:var(--muted);font-size:12px}
+.cbox.in{margin-left:16px} .cbox.in2{margin-left:32px}
+.cbox.hl{border-color:var(--ai);background:var(--ai-bg)}
+.cbox.hl2{border-color:var(--blue);background:var(--blue-bg)}
+.rules{max-width:1240px;margin-top:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.rule{border-left:3px solid var(--blue);padding:6px 12px;background:var(--panel);border-radius:0 8px 8px 0}
+.rule b{display:block;margin-bottom:3px}
+.rule span{color:var(--muted);font-size:12px}
+.rule.ai{border-left-color:var(--ai)}
+.dist{max-width:1240px;margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tree{font:12px/1.6 var(--mono);white-space:pre;color:#c8d1e0}
+.tree .c{color:var(--dim)} .tree .h{color:var(--ok-tx)} .tree .a{color:var(--ai)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo"><i></i>Ticket Cockpit <span class="dim" style="font-weight:400">· localhost:4577 · draft v0.2</span></div>
+  <div class="project">Deck Builder ▾</div>
+  <div class="tabs">
+    <button class="on" data-s="tickets">My tickets</button>
+    <button data-s="cockpit">Cockpit</button>
+    <button data-s="editor">Pipeline editor</button>
+    <button data-s="concepts">Concepts</button>
+  </div>
+  <div class="conns">
+    <span class="conn"><span class="dot"></span>Jira</span>
+    <span class="conn"><span class="dot"></span>GitHub</span>
+    <span class="conn"><span class="dot"></span>Actions</span>
+    <span class="conn"><span class="dot warn"></span>GKE · re-auth</span>
+    <span class="conn"><span class="dot ai"></span>Claude Code · 5 sessions</span>
+    <span>● Live</span>
+  </div>
+</div>
+
+<!-- ================= MY TICKETS ================= -->
+<section class="screen on" id="tickets">
+  <div class="tl">
+    <div class="tl-top">
+      <h2>My tickets</h2>
+      <div class="filters" id="filters"></div>
+      <button class="btn" style="margin-left:auto">Sort: by attention ▾</button>
+      <button class="btn">Refresh</button>
+    </div>
+    <div class="tl-sub">6 tickets in your current sprint · <span class="mono">assignee = currentUser() AND sprint in openSprints()</span> · one Claude Code session per ticket · click a ticket to open it in the cockpit</div>
+    <div id="tlist"></div>
+  </div>
+</section>
+
+<!-- ================= COCKPIT ================= -->
+<section class="screen" id="cockpit">
+  <aside class="inbox" id="inbox"></aside>
+  <main class="focus">
+    <div class="thead" id="c-head"></div>
+    <div id="c-board"></div>
+    <div class="legend">
+      <span><i style="border-color:var(--ok-bd)"></i>arrow crossed</span>
+      <span><i style="border-color:var(--warn-bd)"></i>guard pending</span>
+      <span><i style="border-color:var(--blue);background:var(--blue)"></i>ready: you cross</span>
+      <span><i style="border-color:var(--line2);border-style:dashed"></i>locked</span>
+      <span><i style="border-color:var(--ai);box-shadow:0 0 6px var(--ai)"></i>agent working on node</span>
+      <span class="dim">Hover a gate to see its guard</span>
+    </div>
+    <div class="work">
+      <div class="console">
+        <div class="ctabs" id="c-tabs"></div>
+        <div class="harness" id="c-harness"></div>
+        <div class="term" id="c-term"></div>
+        <div class="quick">
+          <span class="dim" style="font-size:11.5px">Type into session:</span>
+          <span class="chip">▶ address-review-feedback</span>
+          <span class="chip">▶ resolve-conflict</span>
+          <span class="chip">▶ diagnose-stage-failure</span>
+          <span class="chip">▶ draft-pm-reply</span>
+          <span class="chip plain">Esc interrupt</span>
+          <span class="chip plain">⧉ copy prompt</span>
+        </div>
+      </div>
+      <div class="cp" id="c-panel"></div>
+    </div>
+  </main>
+</section>
+
+<!-- ================= EDITOR ================= -->
+<section class="screen" id="editor">
+  <div class="ed">
+    <div class="canvaswrap">
+      <div class="edbar">
+        <span class="file">AI-SDLC-App/<b>projects/deck-builder/pipeline.yaml</b> · branch <span class="br">team/deck-builder</span> · 2 uncommitted changes</span>
+        <button class="btn">⟳ Detect columns from Jira</button>
+        <button class="btn">+ Stage</button>
+        <button class="btn">+ Arrow</button>
+        <button class="btn">Preset ▾</button>
+        <button class="btn pri">Commit to team/deck-builder</button>
+      </div>
+
+      <div class="canvas">
+        <svg width="1110" height="330" style="position:absolute;inset:0">
+          <defs>
+            <marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#3d4f6e"/></marker>
+            <marker id="ahy" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#c9962a"/></marker>
+            <marker id="ahb" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#3b82f6"/></marker>
+          </defs>
+          <line x1="134" y1="156" x2="178" y2="156" stroke="#3d4f6e" stroke-width="1.5" marker-end="url(#ah)"/>
+          <line x1="290" y1="156" x2="334" y2="156" stroke="#3b82f6" stroke-width="2" marker-end="url(#ahb)"/>
+          <line x1="446" y1="156" x2="490" y2="156" stroke="#3d4f6e" stroke-width="1.5" marker-end="url(#ah)"/>
+          <line x1="602" y1="156" x2="646" y2="156" stroke="#3d4f6e" stroke-width="1.5" marker-end="url(#ah)"/>
+          <line x1="758" y1="156" x2="802" y2="156" stroke="#3d4f6e" stroke-width="1.5" marker-end="url(#ah)"/>
+          <line x1="914" y1="156" x2="958" y2="156" stroke="#3d4f6e" stroke-width="1.5" marker-end="url(#ah)"/>
+          <path d="M391,96 C391,40 703,40 703,92" fill="none" stroke="#3d4f6e" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+          <path d="M703,216 C703,300 235,300 235,220" fill="none" stroke="#c9962a" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ahy)"/>
+          <path d="M547,216 C547,262 260,262 260,220" fill="none" stroke="#6e5418" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#ahy)"/>
+        </svg>
+        <div class="stg" style="left:24px"><b>Ticket</b><span class="tg u">unit: item</span><span class="tg gt">gate: In Progress</span><span class="tg">✦ build-ticket</span></div>
+        <div class="stg" style="left:180px"><b>Pull requests</b><span class="tg u">unit: change ×N, any repo</span><span class="tg gt">gate: Code Review</span><span class="tg">done: merged</span><span class="tg">✦ 3 prompts</span></div>
+        <div class="stg" style="left:336px"><b>Dev deploy</b><span class="tg u">unit: lane → np</span><span class="tg gt">gate: auto</span><span class="tg">done: rolled_out</span><span class="tg">☐ attest: NP</span></div>
+        <div class="stg" style="left:492px"><b>Stage</b><span class="tg u">unit: lane → st</span><span class="tg gt">gate: E2E Testing</span><span class="tg">manual: Spinnaker</span></div>
+        <div class="stg" style="left:648px"><b>PM review</b><span class="tg u">unit: item (fan-in)</span><span class="tg gt">gate: Ready for Demo</span><span class="tg">done: PM ok</span></div>
+        <div class="stg" style="left:804px"><b>Pending</b><span class="tg u">unit: item</span><span class="tg gt">gate: Pending Depl.</span><span class="tg">auto, no button</span></div>
+        <div class="stg" style="left:960px"><b>Done</b><span class="tg u">unit: item</span><span class="tg gt">gate: Done</span><span class="tg">unfinished → skipped</span></div>
+        <span class="arrowchip" style="left:156px;top:156px" data-a="tk">→</span>
+        <span class="arrowchip sel" style="left:312px;top:156px" data-a="prs">→ 3</span>
+        <span class="arrowchip" style="left:468px;top:156px" data-a="dev">→ ☐</span>
+        <span class="arrowchip" style="left:624px;top:156px" data-a="tk">→</span>
+        <span class="arrowchip" style="left:780px;top:156px" data-a="tk">→</span>
+        <span class="arrowchip" style="left:936px;top:156px" data-a="tk">→</span>
+        <span class="arrowchip sk" style="left:547px;top:54px" data-a="skip">skip: lane has no stage deploy</span>
+        <span class="arrowchip rw" style="left:469px;top:283px" data-a="rw">↩ rework: new change after PM feedback</span>
+        <span class="arrowchip rw" style="left:404px;top:250px" data-a="hot">↩ fix: stage failed</span>
+      </div>
+
+      <div class="below">
+        <div class="card">
+          <h4>Repos <em class="muted">projects/deck-builder/project.yaml</em></h4>
+          <table class="repos">
+            <tr><th>#</th><th>Repo</th><th>Dev (np)</th><th>Stage (st)</th><th>Version</th></tr>
+            <tr><td>1</td><td>dataform</td><td>deploy-np.yaml (push)</td><td>deploy-stage.yaml</td><td>tag</td></tr>
+            <tr><td>2</td><td>ba-backend</td><td>meta-build.yaml (PR closed)</td><td>Spinnaker · manual</td><td>tag + kubectl</td></tr>
+            <tr><td>3</td><td>ba-frontend</td><td>meta-build.yaml (PR closed)</td><td>Spinnaker · manual</td><td>tag + kubectl</td></tr>
+            <tr><td>4</td><td>dtb-action-service</td><td>meta-build.yaml</td><td>Spinnaker · manual</td><td>tag + kubectl</td></tr>
+            <tr><td>5</td><td>dtb-docs</td><td>docs publish on main</td><td class="dim">none → skip</td><td class="dim">—</td></tr>
+          </table>
+          <div class="hint">The order is the merge order. One ticket can have lanes in any of these repos, and the ticket's workspace gets a worktree for each repo it touches.</div>
+        </div>
+        <div class="card">
+          <h4>Agent harness <em class="muted">harness/claude-code.yaml</em></h4>
+          <div class="yaml" style="white-space:pre"><span class="k">tool</span>: claude-code   <span class="c"># the real CLI, installed in the image</span>
+<span class="k">version</span>: <span class="s">"2.x"</span>
+<span class="k">session</span>: { <span class="k">per</span>: ticket, <span class="k">cwd</span>: <span class="s">/workspaces/{{ticket.key}}</span> }
+<span class="k">launch</span>: <span class="s">claude --session-id {{session.id}}</span>
+<span class="k">resume</span>: <span class="s">claude --resume {{session.id}}</span>
+<span class="k">inject</span>:
+  <span class="k">mcp</span>: <span class="s">.mcp.json → sdlc (get_context, draft, checkpoint)</span>
+  <span class="k">instructions</span>: <span class="s">CLAUDE.md ← guardrails.md</span>
+<span class="k">observe</span>: <span class="k">hooks</span>: [SessionStart, UserPromptSubmit, PreToolUse, Notification, Stop]
+<span class="k">control</span>: { <span class="k">send</span>: bracketed-paste, <span class="k">interrupt</span>: Esc, <span class="k">permissions</span>: hook }
+<span class="k">policy</span>:
+  <span class="k">deny</span>: [<span class="s">"Bash(gh pr merge*)"</span>, <span class="s">"Bash(*spinnaker*)"</span>, <span class="s">"mcp__atlassian__*write*"</span>]</div>
+        </div>
+        <div class="card">
+          <h4>Connectors (capabilities)</h4>
+          <ul class="list">
+            <li class="y">tracker: Jira Cloud · board DIG1 · scope: my open sprint</li>
+            <li class="y">code: GitHub · 5 repos (table above)</li>
+            <li class="y">delivery: GitHub Actions (np) · Spinnaker link (st, manual)</li>
+            <li class="n">runtime: kubectl · GKE · needs <span class="mono">gcloud auth login</span></li>
+            <li class="y">agent: Claude Code via harness/claude-code.yaml</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>Guardrails <em class="muted">guardrails.md → CLAUDE.md in each workspace</em></h4>
+          <div class="inp code">- No comments in code.
+- Unit tests are written after manual testing.
+- Draft PR, Jira and PM texts with sdlc.draft. Never post them.
+- Never merge, promote or move tickets. The human crosses arrows.</div>
+        </div>
+      </div>
+    </div>
+    <aside class="side" id="side"></aside>
+  </div>
+</section>
+
+<!-- ================= CONCEPTS ================= -->
+<section class="screen" id="concepts">
+  <div class="cwrap">
+    <div class="layers">
+      <div class="layer">
+        <h3 style="color:var(--blue-tx)">1 · Configuration</h3>
+        <div class="lead">What the pipeline looks like. <span class="mono">projects/&lt;name&gt;/</span> in your branch of AI-SDLC-App, edited visually.</div>
+        <div class="cbox"><b>Project</b><span>connectors + repos (several per ticket) + one pipeline</span></div>
+        <div class="cbox in"><b>Connector</b><span>implements a capability: tracker · code · delivery · runtime · agent · script</span></div>
+        <div class="cbox in"><b>Pipeline</b><span>stages + arrows, presets, detected from the tracker</span></div>
+        <div class="cbox in2"><b>Stage (column)</b><span>unit kind · node states · completion check · actions · skip rules</span></div>
+        <div class="cbox in2 hl2"><b>Arrow (transition)</b><span>from/to · kind (forward, skip, rework) · guard · on_cross effects · handoff prompt · crossing: human</span></div>
+        <div class="cbox in2"><b>Action</b><span>link · copy · command · api · agent, with a reach: read · local · outward</span></div>
+        <div class="cbox in hl"><b>Harness</b><span>per AI tool: launch/resume · inject (MCP, guardrails) · observe (hooks) · control · policy</span></div>
+        <div class="cbox in"><b>Prompt templates + guardrails</b><span>versioned next to the pipeline</span></div>
+      </div>
+      <div class="layer">
+        <h3 style="color:var(--ok-tx)">2 · Runtime</h3>
+        <div class="lead">Where each ticket is. Derived live from the tools, never stored.</div>
+        <div class="cbox"><b>Ticket run</b><span>one ticket flowing through the pipeline</span></div>
+        <div class="cbox in"><b>Lane</b><span>one change in any repo. Fans out at PRs, fans in at PM review</span></div>
+        <div class="cbox in2"><b>Node</b><span>lane × stage → state, derived from facts</span></div>
+        <div class="cbox in"><b>Attestation</b><span>the only local state: "Validated in NP @ v1.0.456"</span></div>
+        <div class="cbox in"><b>Ticket workspace</b><span><span class="mono">/workspaces/DIG1-440/{ba-backend, dtb-docs}</span>: one worktree per repo touched</span></div>
+        <div class="cbox in hl"><b>Agent session: exactly one per ticket</b><span>the real tool in a PTY, run in the workspace, driven through the harness, talks back through the MCP tools <span class="mono">get_context / draft / checkpoint</span></span></div>
+        <div class="cbox in hl"><b>Checkpoint</b><span>failure · permission · review · arrow ready · external</span></div>
+      </div>
+      <div class="layer">
+        <h3 style="color:var(--ai)">3 · Experience</h3>
+        <div class="lead">A web app at localhost, served from Docker.</div>
+        <div class="cbox"><b>My tickets</b><span>every ticket with its full graph. Click → animated into the Cockpit</span></div>
+        <div class="cbox"><b>Cockpit</b><span>inbox + one ticket's graph + its session</span></div>
+        <div class="cbox in hl"><b>Session console</b><span>the tool's own TUI over a WebSocket. You type directly, the harness types templates</span></div>
+        <div class="cbox in"><b>Checkpoint panel</b><span>what the agent did · drafts to post · permission answers · guard for the next arrow</span></div>
+        <div class="cbox"><b>Pipeline editor</b><span>canvas ⇄ YAML, commits to your branch</span></div>
+      </div>
+    </div>
+    <div class="rules">
+      <div class="rule ai"><b>Agents work inside columns. Humans cross arrows.</b><span>v1 keeps <span class="mono">crossing: human</span> on every arrow.</span></div>
+      <div class="rule ai"><b>One ticket, one session, the real tool.</b><span>No CLI of our own: the harness wraps Claude Code, Codex, …</span></div>
+      <div class="rule"><b>Agents draft, humans send.</b><span>Outward actions (merge, post, move the ticket, promote) are only run by you, from the app.</span></div>
+      <div class="rule"><b>The tracker follows the work.</b><span>Forward on cross, backward through rework arrows. Attestations are tied to versions.</span></div>
+    </div>
+    <div class="dist">
+      <div class="layer">
+        <h3>Your branch of AI-SDLC-App</h3>
+        <div class="tree"><span class="h">AI-SDLC-App/</span>                     <span class="c">fork or branch, open source upstream</span>
+├─ app/                          <span class="c">web app (upstream only)</span>
+├─ projects/
+│  ├─ example/                   <span class="c">shipped upstream</span>
+│  └─ <span class="h">deck-builder/</span>              <span class="c">yours, never touched upstream</span>
+│     ├─ project.yaml            <span class="c">connectors, repos, merge order</span>
+│     ├─ pipeline.yaml           <span class="c">stages + arrows</span>
+│     ├─ <span class="a">harness/claude-code.yaml</span>
+│     ├─ prompts/*.md
+│     └─ guardrails.md
+├─ docker-compose.yml
+└─ .env.secrets                  <span class="c">gitignored</span></div>
+      </div>
+      <div class="layer">
+        <h3>docker compose up → localhost:4577</h3>
+        <div class="tree"><span class="h">cockpit</span> (one container)
+├─ web app: UI + SSE live updates + WebSocket terminals
+├─ engine: connectors, facts → state, checkpoints
+├─ <span class="a">MCP server "sdlc"</span> + hook endpoint for harnesses
+└─ <span class="a">claude</span> (pinned), git, gh, kubectl, gcloud
+
+<span class="c">volumes</span>
+├─ ./projects            → /app/projects    <span class="c">config</span>
+├─ repos                 → /repos           <span class="c">clones</span>
+├─ ~/cockpit/workspaces  → /workspaces      <span class="c">open in your IDE</span>
+└─ ~/.config/gh, ~/.kube, ~/.config/gcloud, ~/.claude  <span class="c">read-only logins</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ---------- data ---------- */
+const S=['Ticket','Pull requests','Dev deploy','Stage','PM review','Pending','Done'];
+const N=(c,b,t,m,ai)=>({c,b,t,m,ai});
+const V=(pr,live)=>`PR ${pr}<br>live ${live}`;
+
+const T=[
+{key:'DIG1-324',title:'Replace scheduled jobs with triggerable admin endpoints',att:'need',kind:'fail',status:'END TO END TESTING',cur:3,
+ inbox:'Stage pods in CrashLoopBackOff (13 restarts), dtb-action-service v0.0.30',age:'14m',
+ next:'diagnose the stage rollout failure',jira:'Jira: End to End Testing',session:['idle','idle since 11/16'],repos:'dtb-action-service',
+ hdr:[['','✓ In Progress'],['1 of 1','✓ Code Review'],['1 of 1','✓ Validated in NP'],['0 of 1','✓ End to End Testing'],['','→ Ready for Demo'],['',''],['','']],
+ ticket:N('ok','DIG1-324','Started'),
+ lanes:[{pr:N('ok','dtb-action-service #13','Merged · 11/16'),dev:N('ok','Deployed',null,V('v0.0.30','v0.0.30')),st:N('fail','Pods failing',null,'PR v0.0.30<br><span class="amb">live v0.0.26</span>')}],
+ pm:N('lock','Waits for stage'),pend:N('lock','Waits for PM'),done:N('lock','Done','0 of 1'),
+ gates:[['done','Crossed · Jira → In Progress'],['done','Crossed · merged'],['done','Crossed · validated in NP'],['fail','Stage rollout failing · 1 of 1 new pod crashing','!'],['lock'],['lock']],
+ term:`<span class="sys">session 9b1e… · Claude Code · /workspaces/DIG1-324 · idle since 11/16 18:40</span>
+
+<span class="p">&gt;</span> (handoff · promote-checklist) Stage promotion for DIG1-324: list what to verify on st…
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, 1 lane, versions np v0.0.30)</span>
+  Checklist ready: promote <span class="y">v0.0.30</span> in Spinnaker, then check /admin/jobs on st.
+
+<span class="sys">Cockpit: runtime saw CrashLoopBackOff on st 14 min ago. Nothing is sent to the session until you choose.</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-fail">FAILURE</span> Stage rollout failing</h3>
+ <div class="sub">dtb-action-service v0.0.30 → st · found by runtime (kubectl) 14 min ago</div>
+ <div class="card"><h4>What the runtime sees <em class="muted">GKE workload ↗</em></h4>
+  <ul class="list"><li class="x">1 of 1 new pod in CrashLoopBackOff (13 restarts)</li><li class="i">Old pods on v0.0.26 still serve traffic</li><li class="i">Last log line:</li></ul>
+  <div class="codebox" style="margin-top:4px">KeyError: 'ADMIN_TOKEN_AUDIENCE'  (settings.py:41)</div></div>
+ <div class="card"><h4>Choose</h4>
+  <div class="row"><button class="btn ai">▶ Diagnose in session</button><button class="btn">Open GKE workload ↗</button><button class="btn">⧉ Copy pod logs</button></div>
+  <div class="hint">"Diagnose" types <span class="mono">diagnose-stage-failure</span> into the session, with pod logs and run links. If a fix PR is needed, the rework arrow <b>Stage → Pull requests</b> opens.</div></div>
+ <div class="card"><h4>Next arrow · Stage → PM review <em style="color:var(--fail-tx)">guard 0 of 1</em></h4>
+  <ul class="list"><li class="x">dtb-action-service v0.0.30 rolled out on st</li></ul>
+  <div class="eff">On cross: tracker → <code>Ready for Demo</code> · handoff: <code>draft-pm-note</code></div></div>`},
+
+{key:'DIG1-448',title:'[Deck Builder] Attachment slide: one-department segments get a single self-paired attachment bar',att:'need',kind:'perm',status:'CODE REVIEW',cur:1,
+ inbox:'Claude Code asks to run make migrate-local in ba-backend',age:'now',
+ next:'answer the agent\'s permission request',jira:'Jira: Code Review',session:['perm','waiting for permission'],repos:'ba-backend, ba-frontend',
+ hdr:[['','✓ In Progress'],['2 of 3','✓ Code Review'],['2 of 3','☐ Validated in NP'],['2 of 3','→ E2E Testing'],['','→ Ready for Demo'],['',''],['','']],
+ ticket:N('ok','DIG1-448','Started'),
+ lanes:[
+  {pr:N('ok','ba-backend #488','Merged · 11/6'),dev:N('ok','Deployed',null,V('v1.0.446','v1.0.451')),st:N('ok','Deployed',null,V('v1.0.446','v1.0.449'))},
+  {pr:N('ok','ba-frontend #212','Merged · 11/12'),dev:N('ok','Deployed',null,V('v2.3.10','v2.3.11')),st:N('ok','Deployed',null,V('v2.3.10','v2.3.10'))},
+  {pr:N('warn','ba-backend #503','Address feedback · 1 thread',null,true),dev:N('lock','Locked','Waits for merge'),st:N('lock','Locked','Waits for dev')}],
+ pm:N('lock','Waits for stage'),pend:N('lock','Waits for PM'),done:N('lock','Done','2 of 3'),
+ gates:[['done','Crossed · Jira → In Progress'],['pend','Guard 2/3 · waiting: #503 approved + CI green','2/3'],['lock'],['lock'],['lock'],['lock']],
+ term:`<span class="sys">session 51c0… · Claude Code · /workspaces/DIG1-448 (ba-backend, ba-frontend)</span>
+
+<span class="p">&gt;</span> (cockpit · address-review-feedback · #503) Address the open thread on attachment_slide.py:77…
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, 3 lanes in 2 repos, 1 open thread)</span>
+<span class="t">●</span> Read <span class="d">ba-backend/src/deck/attachment_slide.py</span>
+<span class="t">●</span> Update <span class="d">ba-backend/src/deck/attachment_slide.py</span> <span class="ok">+14</span> <span class="r">−3</span>
+<span class="t">●</span> The local fixture DB needs the new column before the tests can run.
+
+<span class="y">╭─ Bash command ───────────────────────────────────────────────╮</span>
+<span class="y">│</span>  make migrate-local          <span class="d">(cwd: ba-backend)</span>
+<span class="y">│</span>  Do you want to proceed?
+<span class="y">│</span>  <span class="p">❯ 1. Yes</span>
+<span class="y">│</span>    2. Yes, and don't ask again for make migrate-local
+<span class="y">│</span>    3. No, and tell Claude what to do differently
+<span class="y">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-perm">PERMISSION</span> Claude Code asks to run a command</h3>
+ <div class="sub">ba-backend #503 · lane 3 of 3 · asked just now · caught by the <span class="mono">PreToolUse</span> hook</div>
+ <div class="card"><h4>Requested</h4>
+  <div class="codebox">make migrate-local</div>
+  <ul class="list" style="margin-top:6px"><li class="i">cwd: /workspaces/DIG1-448/ba-backend</li><li class="i">reach: <b>local</b> (worktree DB only), not in the project's allow list</li></ul>
+  <div class="row"><button class="btn pri">Allow once</button><button class="btn">Allow for this ticket</button><button class="btn bad">Deny…</button></div>
+  <div class="hint">Your answer goes back through the harness, and the same prompt in the terminal closes. You can also answer it in the terminal.</div></div>
+ <div class="card"><h4>Next arrow · Pull requests → Dev deploy <em style="color:var(--warn-tx)">guard 2 of 3</em></h4>
+  <ul class="list"><li class="y">ba-backend #488 merged</li><li class="y">ba-frontend #212 merged</li><li class="n">ba-backend #503 approved, CI green, no open threads</li></ul>
+  <div class="eff">On cross: <code>merge all</code> in repo order · handoff: <code>verify-dev-deploy</code></div></div>`},
+
+{key:'DIG1-440',title:'[Deck Builder] Event Analysis drops week 53 in 53-week years',att:'need',kind:'review',status:'CODE REVIEW',cur:1,
+ inbox:'Agent finished feedback on #510: check the fix and the drafted reply',age:'2m',
+ next:'review the agent\'s fix on ba-backend #510, then post the reply',jira:'Jira: Code Review · moved back 1h ago (rework)',session:['checkpoint','checkpoint · waiting for you'],repos:'ba-backend, dtb-docs',
+ rework:'↩ rework arrow crossed 1h ago: PM feedback → new PR #510 → Jira back to Code Review',
+ hdr:[['','✓ In Progress'],['2 of 3','✓ Code Review'],['2 of 3','☐ Validated in NP'],['1 of 3','→ E2E Testing'],['','→ Ready for Demo'],['','auto'],['','']],
+ ticket:N('ok','DIG1-440','Started'),
+ lanes:[
+  {pr:N('ok','ba-backend #497','Merged · 11/16'),dev:N('ok','Deployed',null,V('v1.0.451','v1.0.455')),st:N('ok','Deployed',null,V('v1.0.451','v1.0.454'))},
+  {pr:N('warn','ba-backend #510','Fix pushed · reply drafted',null,true),dev:N('lock','Locked','Waits for merge'),st:N('lock','Locked','Waits for dev')},
+  {pr:N('ok','dtb-docs #34','Merged · 11/16'),dev:N('ok','Done','Docs publish'),st:N('skip','Skipped','No stage deploy')}],
+ pm:N('lock','PM feedback','Answered by #510'),pend:N('lock','Waits for PM'),done:N('lock','Done','2 of 3'),
+ gates:[['done','Crossed · Jira → In Progress'],['pend','Guard 2/3 · waiting: #510 approved + CI green','2/3'],['lock','Locked · needs Validated in NP for v1.0.456'],['lock'],['lock'],['lock']],
+ term:`<span class="sys">session 7f3a… · Claude Code · /workspaces/DIG1-440 (ba-backend, dtb-docs)</span>
+
+<span class="p">&gt;</span> (cockpit · address-review-feedback · #510) Address the open review thread on src/deck/event_analysis.py:118…
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, 3 lanes, 1 open thread, PM comment of 11/16)</span>
+<span class="t">●</span> Read <span class="d">ba-backend/src/deck/event_analysis.py</span>
+<span class="t">●</span> The reviewer is right: <span class="y">week_range()</span> builds the range with <span class="y">range(1, 53)</span>, so it is off by one.
+<span class="t">●</span> Update <span class="d">ba-backend/src/deck/event_analysis.py</span> <span class="ok">+6</span> <span class="r">−2</span>
+<span class="t">●</span> Bash <span class="d">pytest tests/deck -q</span>
+  <span class="ok">42 passed in 3.1s</span>
+<span class="t">●</span> Bash <span class="d">git commit -m "DIG1-440 include ISO week 53 in range builder" &amp;&amp; git push</span>
+<span class="t">●</span> sdlc.draft <span class="d">(kind: pr_reply, thread: #510/r118)</span>
+<span class="t">●</span> sdlc.checkpoint <span class="d">(kind: review, summary: "Fixed off-by-one, test added, reply drafted")</span>
+
+  Done. I pushed one commit and drafted a reply to the thread. It's in the Cockpit panel; I didn't post it.
+
+<span class="d">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-review">CHECKPOINT</span> Agent finished: address review feedback</h3>
+ <div class="sub">ba-backend #510 · lane 2 of 3 · 2 min ago</div>
+ <div class="card"><h4>What the agent did <em class="muted">view diff ↗</em></h4>
+  <ul class="list"><li class="y">1 commit pushed: <span class="mono">a41c9e2</span> include ISO week 53 in range builder</li><li class="y">Unit test added for 2026 (53 weeks): 42 passed</li><li class="y">Reply drafted for 1 open thread</li></ul></div>
+ <div class="card"><h4>Draft reply · event_analysis.py:118 <em style="color:var(--ai)">✦ drafted</em></h4>
+  <div class="draft">Good catch. The range now ends at the last ISO week of the year, so 53-week years (2026, 2032) include week 53. I added a test for 2026. Fixed in a41c9e2.</div>
+  <div class="row"><button class="btn pri">Post reply &amp; resolve</button><button class="btn">Edit</button><button class="btn ai">↺ Send back to agent…</button></div></div>
+ <div class="card"><h4>Next arrow · Pull requests → Dev deploy <em style="color:var(--warn-tx)">guard 2 of 3</em></h4>
+  <ul class="list"><li class="y">ba-backend #497 merged</li><li class="y">dtb-docs #34 merged</li><li class="n">ba-backend #510 approved, CI green, no open threads</li></ul>
+  <div class="eff">On cross: <code>merge all</code> in repo order (re-checked live) · handoff: <code>verify-dev-deploy</code></div>
+  <div class="row"><button class="btn pri" disabled>Cross → Dev deploy</button><span class="dim" style="font-size:11.5px">You always cross.</span></div></div>`},
+
+{key:'DIG1-315',title:'[Email] Standardize rate metrics using bps',att:'working',kind:'ai',status:'IN PROGRESS',cur:1,
+ inbox:'Writing tests for bps rate metrics (ba-backend #508)',age:'7m',
+ next:'nothing for you while the agent works',jira:'Jira: In Progress',session:['working','working · 7m'],repos:'ba-backend, dataform',
+ hdr:[['','✓ In Progress'],['0 of 2','→ Code Review'],['0 of 2',''],['0 of 2','→ E2E Testing'],['','→ Ready for Demo'],['',''],['','']],
+ ticket:N('ok','DIG1-315','Started'),
+ lanes:[
+  {pr:N('wait','ba-backend #508','Draft · agent writing tests',null,true),dev:N('lock','Locked','Waits for merge'),st:N('lock','Locked','Waits for dev')},
+  {pr:N('wait','dataform #77','Draft · bps views'),dev:N('lock','Locked','Waits for merge'),st:N('lock','Locked','Waits for dev')}],
+ pm:N('lock','Waits for stage'),pend:N('lock','Waits for PM'),done:N('lock','Done','0 of 2'),
+ gates:[['done','Crossed · Jira → In Progress'],['lock','Guard 0/2 · PRs still drafts'],['lock'],['lock'],['lock'],['lock']],
+ term:`<span class="sys">session 22d8… · Claude Code · /workspaces/DIG1-315 (ba-backend, dataform)</span>
+
+<span class="p">&gt;</span> (handoff · build-ticket) Build DIG1-315 from ai/specs/DIG1-315/ …
+<span class="t">●</span> sdlc.get_context <span class="d">(ticket, spec, 2 attachments)</span>
+<span class="t">●</span> Update <span class="d">dataform/definitions/rates/*.sqlx</span> <span class="ok">+48</span> <span class="r">−31</span>
+<span class="t">●</span> Write <span class="d">ba-backend/src/email/rates.py</span>
+<span class="t">●</span> Bash <span class="d">pytest tests/email -q</span>
+  <span class="r">3 failed</span>, 18 passed
+<span class="t">●</span> Update <span class="d">ba-backend/src/email/rates.py</span> <span class="ok">+9</span> <span class="r">−4</span>
+<span class="t">●</span> Bash <span class="d">pytest tests/email -q</span>
+  <span class="d">running…</span>
+
+<span class="t">✻ Working…</span> <span class="d">(7m · esc to interrupt)</span>`,
+ panel:`<h3><span class="kind k-ai">AGENT WORKING</span> Building DIG1-315</h3>
+ <div class="sub">7 min · 2 drafts in 2 repos · status from the harness hooks</div>
+ <div class="card"><h4>Live summary</h4>
+  <ul class="list"><li class="i">6 files changed in ba-backend, dataform</li><li class="i">Tests: 3 failing → being fixed</li><li class="i">Last tool: Bash · pytest tests/email</li></ul>
+  <div class="row"><button class="btn">Esc · Interrupt</button><button class="btn">Add a note to the session…</button></div>
+  <div class="hint">Nothing needs you. You get a checkpoint when the agent calls <span class="mono">sdlc.checkpoint</span> or stops.</div></div>
+ <div class="card"><h4>Next arrow · Pull requests → Dev deploy <em class="muted">guard 0 of 2</em></h4>
+  <ul class="list"><li class="n">ba-backend #508 ready for review, approved, CI green</li><li class="n">dataform #77 ready for review, approved, CI green</li></ul></div>`},
+
+{key:'DIG1-460',title:'[Deck Builder] PPTX export keeps chart colours',att:'waiting',kind:'wait',status:'READY FOR DEMO',cur:4,
+ inbox:'With PM for demo, no reply yet',age:'1d',
+ next:'nothing. Waiting on the PM',jira:'Jira: Ready for Demo',session:['idle','idle since yesterday'],repos:'ba-frontend',
+ hdr:[['','✓ In Progress'],['1 of 1','✓ Code Review'],['1 of 1','✓ Validated in NP'],['1 of 1','✓ End to End Testing'],['','✓ Ready for Demo'],['',''],['','']],
+ ticket:N('ok','DIG1-460','Started'),
+ lanes:[{pr:N('ok','ba-frontend #219','Merged · 11/13'),dev:N('ok','Deployed',null,V('v2.3.9','v2.3.11')),st:N('ok','Deployed',null,V('v2.3.9','v2.3.10'))}],
+ pm:N('wait','With PM','No reply yet'),pend:N('lock','Waits for PM'),done:N('lock','Done','1 of 1'),
+ gates:[['done','Crossed'],['done','Crossed'],['done','Crossed'],['done','Crossed · Jira → Ready for Demo'],['lock','Guard · PM approves or Jira → Pending Deployment'],['lock']],
+ term:`<span class="sys">session 0e77… · Claude Code · /workspaces/DIG1-460 (ba-frontend) · idle since yesterday</span>
+
+<span class="p">&gt;</span> (handoff · draft-pm-note) Draft a short note for the PM on what was done…
+<span class="t">●</span> sdlc.draft <span class="d">(kind: jira_comment)</span>
+  Drafted. You posted it on 11/16 at 14:02.
+
+<span class="d">╭──────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────╯</span>`,
+ panel:`<h3><span class="kind k-wait">WAITING ON PM</span> With PM for demo since yesterday</h3>
+ <div class="sub">Your note was posted 11/16 14:02 · no newer comment</div>
+ <div class="card"><h4>Options</h4><div class="row"><button class="btn ai">▶ draft-pm-nudge</button><button class="btn">Open Jira comments ↗</button></div>
+  <div class="hint">When the PM comments, this ticket moves to "Needs you" with a <b>PM feedback</b> checkpoint.</div></div>
+ <div class="card"><h4>Next arrow · PM review → Pending <em class="muted">guard 0 of 1</em></h4>
+  <ul class="list"><li class="n">PM approves, or Jira moves to Pending Deployment</li></ul></div>`},
+
+{key:'DIG1-323',title:'Action Service Authentication',att:'done',kind:'ok',status:'DONE',cur:7,
+ inbox:'Released',age:'3d',
+ next:'nothing. Released',jira:'Jira: Done',session:['ended','ended · archived'],repos:'dtb-action-service',
+ hdr:[['','✓ In Progress'],['1 of 1','✓ Code Review'],['1 of 1','✓ Validated in NP'],['1 of 1','✓ End to End Testing'],['','✓ Ready for Demo'],['',''],['','']],
+ ticket:N('ok','DIG1-323','Started'),
+ lanes:[{pr:N('ok','dtb-action-service #11','Merged · 11/12'),dev:N('ok','Deployed',null,V('v0.0.27','v0.0.30')),st:N('skip','Skipped','Ticket done in Jira')}],
+ pm:N('ok','Reviewed','PM review is over'),pend:N('ok','Released'),done:N('ok','Done','Done'),
+ gates:[['done','Crossed'],['done','Crossed'],['done','Crossed'],['done','Crossed'],['done','Crossed'],['done','Crossed']],
+ term:`<span class="sys">session 4a90… · ended when the ticket reached Done · transcript kept with the ticket</span>`,
+ panel:`<h3><span class="kind k-ok">DONE</span> Released</h3><div class="sub">1 PR · released in v0.0.30 · 3 days from merge to release</div>
+ <div class="card"><h4>Session</h4><div class="row"><button class="btn">Open transcript</button><button class="btn">Remove workspace</button></div></div>`}
+];
+const byKey=k=>T.find(t=>t.key===k);
+
+/* ---------- board renderer (shared) ---------- */
+const nc=n=>'n-'+n.c+(n.ai?' n-ai':'');
+const ni=n=>(n.ai?'<span class="aitag">✦ agent</span>':'')+`<b>${n.b}</b>`+(n.t||'')+(n.m?`<span class="mono">${n.m}</span>`:'');
+const live=n=>!['lock','skip'].includes(n.c);
+function board(t){
+  const n=t.lanes.length, end=n+2;
+  let h=`<div class="board" style="grid-template-rows:auto repeat(${n},62px)${t.rework?' 30px':''}">`;
+  for(let i=0;i<7;i++){
+    const c=1+i*2, cls=t.cur>=7?'':(i<t.cur?'':i===t.cur?'cur':'lock');
+    h+=`<div class="colbg ${cls}" style="grid-column:${c};grid-row:1/${end}"></div>`;
+    const [sub,st]=t.hdr[i];
+    const todo=/^[→☐]/.test(st)||st==='auto';
+    h+=`<div class="ch ${cls==='cur'?'cur':cls==='lock'?'lockh':''}" style="grid-column:${c}"><b>${S[i]}</b>${sub?sub+'<br>':''}${st?`<span class="st ${todo?'todo':''}">${st}</span>`:''}</div>`;
+  }
+  const span=(i,nd)=>`<div class="node ${nc(nd)} span" style="grid-column:${1+i*2};grid-row:2/${end}">${ni(nd)}</div>`;
+  h+=span(0,t.ticket);
+  t.lanes.forEach((l,j)=>['pr','dev','st'].forEach((k,x)=>{h+=`<div class="node ${nc(l[k])}" style="grid-column:${3+x*2};grid-row:${j+2}">${ni(l[k])}</div>`}));
+  h+=span(4,t.pm)+span(5,t.pend)+span(6,t.done);
+  for(let g=0;g<6;g++){
+    let wires='',tpl;
+    if(g<4){
+      tpl=`repeat(${n},62px)`;
+      t.lanes.forEach(l=>{
+        const src=g===0?t.ticket:g===1?l.pr:g===2?l.dev:l.st;
+        const dst=g===0?l.pr:g===1?l.dev:g===2?l.st:t.pm;
+        wires+=`<div class="wire ${live(src)&&live(dst)?'':'off'}"></div>`;
+      });
+    }else{
+      tpl='1fr';
+      const src=g===4?t.pm:t.pend, dst=g===4?t.pend:t.done;
+      wires=`<div class="wire ${live(src)&&live(dst)?'':'off'}"></div>`;
+    }
+    const [st,tip,lbl]=t.gates[g];
+    const icon=lbl||{done:'✓',lock:'🔒',ready:'➜',fail:'!',pend:'…'}[st];
+    h+=`<div class="gut" style="grid-column:${2+g*2};grid-row:2/${end};grid-template-rows:${tpl}">${wires}<div class="gate g-${st}" data-tip="${tip||'Locked'}">${icon}</div></div>`;
+  }
+  if(t.rework) h+=`<div class="rework" style="grid-row:${end}"><div class="u"></div><div class="lbl">${t.rework}</div></div>`;
+  return h+'</div>';
+}
+const ATT={need:['NEEDS YOU','need'],working:['AGENT WORKING','ai'],waiting:['WAITING','wait'],done:['DONE','ok']};
+const KIND={fail:'FAILURE',perm:'PERMISSION',review:'REVIEW',ai:'WORKING',wait:'PM',ok:'DONE'};
+const agentChip=t=>{const [s,l]=t.session;return s==='working'?`<span class="pill ai"><span class="spin"></span> claude · ${l}</span>`:s==='ended'?`<span class="pill">claude · ${l}</span>`:`<span class="pill ai">● claude · ${l}</span>`};
+function mini(t){
+  let h='<span class="mini">';
+  for(let i=0;i<7;i++){const c=t.cur>=7||i<t.cur?'g':i===t.cur?(t.kind==='fail'?'r':t.kind==='ai'?'v':t.att==='need'?'a':'b'):'';h+=`<span class="${c}"></span>`}
+  return h+'</span>';
+}
+
+/* ---------- My tickets ---------- */
+const ORDER={need:0,working:1,waiting:2,done:3};
+const PRI={fail:0,perm:1,review:2};
+const sorted=()=>[...T].sort((a,b)=>ORDER[a.att]-ORDER[b.att]||(PRI[a.kind]??9)-(PRI[b.kind]??9));
+let filter='all';
+function renderFilters(){
+  const c=k=>T.filter(t=>t.att===k).length;
+  const F=[['all','All',T.length],['need','Needs you',c('need')],['working','Agent working',c('working')],['waiting','Waiting',c('waiting')],['done','Done',c('done')]];
+  document.getElementById('filters').innerHTML=F.map(([k,l,n])=>`<span class="${filter===k?'on':''}" data-f="${k}">${l}<b>${n}</b></span>`).join('');
+  document.querySelectorAll('#filters span').forEach(s=>s.onclick=()=>{filter=s.dataset.f;renderFilters();renderTickets()});
+}
+function renderTickets(){
+  document.getElementById('tlist').innerHTML=sorted().filter(t=>filter==='all'||t.att===filter).map(t=>{
+    const cls=t.kind==='fail'?'fail':t.att==='need'?'need':t.att==='working'?'working':'';
+    const [al,ak]=ATT[t.att];
+    return `<div class="tcard ${cls}" data-k="${t.key}">
+      <div class="tc-h"><div class="tc-title"><span class="key">${t.key}</span>${t.title}</div>
+        <div class="right">${t.att==='need'?`<span class="kind k-${t.kind}">${KIND[t.kind]}</span>`:''}${agentChip(t)}<span class="pill st ${t.att==='done'?'done':''}">${t.status}</span></div></div>
+      <div class="tc-board"><div class="boardwrap">${board(t)}</div></div>
+      <div class="tc-f"><span class="nx">● Next: <b>${t.next}</b></span><span class="dim">· repos: ${t.repos}</span><span class="open">Open in cockpit →</span></div>
+    </div>`}).join('');
+  document.querySelectorAll('.tcard').forEach(c=>c.onclick=e=>{if(!e.target.closest('.gate'))openTicket(c.dataset.k)});
+}
+
+/* ---------- Cockpit ---------- */
+let current='DIG1-440';
+function renderInbox(){
+  const groups=[['need','Needs you'],['working','Agents working'],['waiting','Waiting on others'],['done','Done this sprint']];
+  document.getElementById('inbox').innerHTML=groups.map(([g,l])=>{
+    const items=sorted().filter(t=>t.att===g); if(!items.length) return '';
+    return `<div class="ib-h">${l} <span class="badge ${g==='need'?'warn':''}">${items.length}</span></div>`+items.map(t=>`
+      <div class="item ${t.key===current?'sel':''} ${g==='done'?'done':''}" data-k="${t.key}">
+        <div class="r1"><span class="key">${t.key}</span>${g==='working'?`<span class="muted" style="font-size:11px"><span class="spin"></span> ${t.age}</span>`:`<span class="kind k-${t.kind}">${KIND[t.kind]}</span>`}</div>
+        <div class="msg">${t.inbox}</div>
+        <div class="r3">${mini(t)}<span>${t.age}</span></div></div>`).join('');
+  }).join('');
+  document.querySelectorAll('#inbox .item').forEach(i=>i.onclick=()=>switchTicket(i.dataset.k));
+}
+function renderCockpit(){
+  const t=byKey(current), [al]=ATT[t.att];
+  document.getElementById('c-head').innerHTML=`<div>
+      <span class="backlink" onclick="backToTickets()">← All tickets</span>
+      <h1 id="c-title"><span class="key">${t.key}</span>${t.title}</h1>
+      <div class="meta"><span class="pill ${t.att==='need'?'need':''}">${al}</span><span class="pill ${t.rework?'back':''}">${t.jira}</span>${agentChip(t)}<span class="pill mono">/workspaces/${t.key} · ${t.repos}</span></div>
+      <div class="next">● Next: <b>${t.next}</b></div></div>
+    <div class="acts"><button class="btn">Open in Jira ↗</button><button class="btn">Open workspace</button><button class="btn">⋯</button></div>`;
+  document.getElementById('c-board').innerHTML=`<div class="boardwrap">${board(t)}</div>`;
+  const [s,l]=t.session, col=s==='perm'?'var(--warn-tx)':s==='ended'||s==='idle'?'var(--muted)':'var(--ai)';
+  document.getElementById('c-tabs').innerHTML=`<span class="ctab">✦ ${t.key} · Claude Code</span><span class="dim" style="font-size:11.5px">one session per ticket · the real CLI in a PTY</span>
+    <span class="cstat"><span style="color:${col}">● ${l}</span><span class="dim">ctx 38% · $0.42</span></span>`;
+  document.getElementById('c-harness').innerHTML=`harness <span class="hb ok">mcp: sdlc ✓</span><span class="hb ok">hooks: 5 ✓</span><span class="hb ok">CLAUDE.md ← guardrails ✓</span><span class="hb ok">policy: deny merge/promote ✓</span><span class="hb">resume on restart</span>`;
+  document.getElementById('c-term').innerHTML=t.term;
+  document.getElementById('c-panel').innerHTML=t.panel;
+  renderInbox();
+}
+
+/* ---------- navigation + view transitions ---------- */
+function setScreen(id){
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.s===id));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
+}
+const vt=fn=>document.startViewTransition?document.startViewTransition(fn):(fn(),{finished:Promise.resolve()});
+function openTicket(key){
+  const card=document.querySelector(`.tcard[data-k="${key}"]`);
+  const b=card.querySelector('.tc-board'), h=card.querySelector('.tc-title');
+  b.style.viewTransitionName='board'; h.style.viewTransitionName='ttitle';
+  vt(()=>{
+    b.style.viewTransitionName=''; h.style.viewTransitionName='';
+    current=key; setScreen('cockpit'); renderCockpit();
+    document.getElementById('c-title').style.viewTransitionName='ttitle';
+  }).finished.then(()=>{const ct=document.getElementById('c-title'); if(ct) ct.style.viewTransitionName=''});
+}
+function backToTickets(){
+  document.getElementById('c-title').style.viewTransitionName='ttitle';
+  let b,h;
+  vt(()=>{
+    document.getElementById('c-title').style.viewTransitionName='';
+    setScreen('tickets'); renderTickets();
+    const card=document.querySelector(`.tcard[data-k="${current}"]`);
+    if(card){b=card.querySelector('.tc-board');h=card.querySelector('.tc-title');b.style.viewTransitionName='board';h.style.viewTransitionName='ttitle';card.scrollIntoView({block:'center'})}
+  }).finished.then(()=>{if(b){b.style.viewTransitionName='';h.style.viewTransitionName=''}});
+}
+function switchTicket(key){
+  if(key===current) return;
+  const ct=document.getElementById('c-title'); ct.style.viewTransitionName='ttitle';
+  vt(()=>{current=key;renderCockpit();document.getElementById('c-title').style.viewTransitionName='ttitle'})
+   .finished.then(()=>{document.getElementById('c-title').style.viewTransitionName=''});
+}
+document.querySelectorAll('.tabs button').forEach(btn=>btn.onclick=()=>vt(()=>{setScreen(btn.dataset.s);if(btn.dataset.s==='cockpit')renderCockpit()}));
+
+/* ---------- editor ---------- */
+const A={
+ prs:{t:'Pull requests → Dev deploy',k:'forward',guard:'all(lanes, l => l.code.ready || l.code.merged)',on:['code.merge_all(order: project.repos, recheck: live)'],handoff:'verify-dev-deploy',
+  y:`<span class="k">- id</span>: prs_to_dev
+  <span class="k">from</span>: pull_requests
+  <span class="k">to</span>: dev_deploy
+  <span class="k">kind</span>: forward
+  <span class="k">guard</span>: <span class="s">all(lanes, l => l.code.ready || l.code.merged)</span>
+  <span class="k">on_cross</span>:
+    - <span class="k">code.merge_all</span>: { <span class="k">order</span>: project.repos, <span class="k">recheck</span>: live, <span class="k">stop_on_fail</span>: true }
+  <span class="k">handoff</span>:
+    <span class="k">session</span>: <span class="s">prompts/verify-dev-deploy.md</span>   <span class="c"># typed into the ticket's one session</span>
+  <span class="k">crossing</span>: human   <span class="c"># v1: always human</span>`},
+ dev:{t:'Dev deploy → Stage',k:'forward',guard:'all(lanes rolled_out on np) && attested("validated_np", versions)',on:['tracker.move("End to End Testing")'],handoff:'promote-checklist',
+  y:`<span class="k">- id</span>: dev_to_stage
+  <span class="k">from</span>: dev_deploy
+  <span class="k">to</span>: stage
+  <span class="k">kind</span>: forward
+  <span class="k">guard</span>: <span class="s">all(lanes, l => l.np.rolled_out) && attested("validated_np", lanes.versions)</span>
+  <span class="k">on_cross</span>:
+    - <span class="k">tracker.move</span>: <span class="s">"End to End Testing"</span>
+  <span class="k">handoff</span>:
+    <span class="k">session</span>: <span class="s">prompts/promote-checklist.md</span>
+  <span class="k">crossing</span>: human`},
+ rw:{t:'↩ PM review → Pull requests',k:'rework',guard:'new change linked to ticket && tracker ≥ "Ready for Demo"',on:['tracker.move("Code Review")','attestations.reset(scope: affected_lanes)'],handoff:'address-pm-feedback',
+  y:`<span class="k">- id</span>: pm_rework
+  <span class="k">from</span>: pm_review
+  <span class="k">to</span>: pull_requests
+  <span class="k">kind</span>: rework
+  <span class="k">trigger</span>: <span class="s">new_change_linked && tracker.at_or_after("Ready for Demo")</span>
+  <span class="k">on_cross</span>:
+    - <span class="k">tracker.move</span>: <span class="s">"Code Review"</span>
+    - <span class="k">attestations.reset</span>: affected_lanes
+  <span class="k">handoff</span>:
+    <span class="k">session</span>: <span class="s">prompts/address-pm-feedback.md</span>
+  <span class="k">crossing</span>: human   <span class="c"># the app proposes it, you confirm</span>`},
+ hot:{t:'↩ Stage → Pull requests',k:'rework',guard:'any(lanes, l => l.st.failed)',on:['tracker.move("Code Review")'],handoff:'diagnose-stage-failure',
+  y:`<span class="k">- id</span>: stage_fix
+  <span class="k">from</span>: stage
+  <span class="k">to</span>: pull_requests
+  <span class="k">kind</span>: rework
+  <span class="k">trigger</span>: <span class="s">any(lanes, l => l.st.failed)</span>
+  <span class="k">on_cross</span>:
+    - <span class="k">tracker.move</span>: <span class="s">"Code Review"</span>
+  <span class="k">handoff</span>:
+    <span class="k">session</span>: <span class="s">prompts/diagnose-stage-failure.md</span>   <span class="c"># gets pod logs, run links</span>
+  <span class="k">crossing</span>: human`},
+ skip:{t:'Dev deploy ⤳ PM review (skip Stage)',k:'skip',guard:'lane.repo.delivery.stage == none',on:['node(stage).state = skipped("No stage deploy")'],handoff:'—',
+  y:`<span class="k">- id</span>: no_stage_skip
+  <span class="k">from</span>: dev_deploy
+  <span class="k">to</span>: pm_review
+  <span class="k">kind</span>: skip
+  <span class="k">per</span>: lane
+  <span class="k">when</span>: <span class="s">lane.repo.delivery.stage == none</span>   <span class="c"># e.g. dtb-docs</span>
+  <span class="k">effect</span>: { <span class="k">node</span>: stage, <span class="k">state</span>: skipped, <span class="k">label</span>: <span class="s">"No stage deploy"</span> }`},
+ tk:{t:'Forward arrow',k:'forward',guard:'all(lanes, l => l.done(from))',on:['tracker.move(to.gate)'],handoff:'per stage',y:`<span class="c"># select a highlighted arrow to see a full example</span>`}
+};
+const seg=(on,opts)=>'<span class="seg">'+opts.map(o=>`<span class="${o===on?'on':''} ${o==='auto'?'na':''}">${o}</span>`).join('')+'</span>';
+function showArrow(id){
+  const a=A[id];
+  document.querySelectorAll('.arrowchip').forEach(c=>c.classList.toggle('sel',c.dataset.a===id));
+  document.getElementById('side').innerHTML=`
+   <div class="muted" style="font-size:11px;letter-spacing:.6px;text-transform:uppercase">Arrow</div>
+   <h3>${a.t}</h3>
+   <div class="fld"><label>Kind</label>${seg(a.k,['forward','skip','rework'])}</div>
+   <div class="fld"><label>${a.k==='rework'?'Trigger (opens the arrow)':a.k==='skip'?'When (per lane)':'Guard (must be true to cross)'}</label><div class="inp code">${a.guard}</div>
+     <div class="hint">Expression over facts: lanes (any repo), tracker, attestations, versions.</div></div>
+   <div class="fld"><label>${a.k==='skip'?'Effect':'On cross (after your click)'}</label>${a.on.map(x=>`<div class="inp code" style="margin-bottom:4px">${x}</div>`).join('')}<div class="hint">+ add effect: tracker.move · code.merge_all · notify · run command</div></div>
+   <div class="fld"><label>Handoff to the ticket's session</label><div class="inp">✦ ${a.handoff}</div><div class="hint">Typed into the ticket's one session through the harness once you cross.</div></div>
+   <div class="fld"><label>Crossing</label>${seg('human',['human','auto'])}<div class="hint">v1: every arrow is crossed by you. "auto" is kept for later.</div></div>
+   <div class="fld"><label>pipeline.yaml</label><div class="yaml">${a.y}</div></div>`;
+}
+document.querySelectorAll('.arrowchip').forEach(c=>c.onclick=()=>showArrow(c.dataset.a));
+
+/* ---------- init ---------- */
+renderFilters(); renderTickets(); showArrow('prs');
+const [hs,hk]=location.hash.slice(1).split('/');
+if(hk&&byKey(hk)) current=hk;
+renderCockpit();
+if(['tickets','cockpit','editor','concepts'].includes(hs)) setScreen(hs);
+</script>
+</body>
+</html>

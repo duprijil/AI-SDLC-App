@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ticket Cockpit: design draft v0.4</title>
+<style>
+:root{
+  --bg:#0a0e16;--panel:#0e1420;--panel2:#121a29;--line:#1c2638;--line2:#2a3850;
+  --text:#d6deeb;--muted:#8391aa;--dim:#4c5971;
+  --ok-bg:#0e2818;--ok-bd:#2f8f46;--ok-tx:#7ee2a0;
+  --warn-bg:#30250b;--warn-bd:#c9962a;--warn-tx:#f3cd6a;
+  --fail-bg:#371219;--fail-bd:#e5534b;--fail-tx:#ff8a84;
+  --blue:#3b82f6;--blue-bg:#0e1b33;--blue-tx:#86b6ff;
+  --ai:#a78bfa;--ai-bg:#1d1636;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+.mono{font-family:var(--mono)} .muted{color:var(--muted)} .dim{color:var(--dim)}
+
+/* ===== desktop title bar ===== */
+.top{height:44px;display:flex;align-items:center;gap:16px;padding:0 14px;border-bottom:1px solid var(--line);background:#0b111c;view-transition-name:topbar;-webkit-app-region:drag}
+.lights{display:flex;gap:7px;margin-right:4px}
+.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.logo{font-weight:700;display:flex;align-items:center;gap:8px}
+.logo i{width:16px;height:16px;border-radius:4px;background:linear-gradient(135deg,var(--blue),var(--ai));display:inline-block}
+.logo small{color:var(--dim);font-weight:400}
+.project{padding:3px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--panel);font-size:12.5px}
+.tabs{display:flex;gap:2px}
+.tabs button{background:none;border:0;padding:12px 10px;color:var(--muted);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--text);border-bottom-color:#e8705a}
+.live{margin-left:auto;display:flex;align-items:center;gap:7px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--muted);font-size:12px}
+.live .d{width:8px;height:8px;border-radius:50%;background:var(--ok-bd);position:relative}
+.live .d.warn::after{content:"";position:absolute;right:-3px;top:-3px;width:6px;height:6px;border-radius:50%;background:var(--warn-bd)}
+.screen{display:none;height:calc(100% - 44px)} .screen.on{display:flex}
+
+/* ===== shared ===== */
+.btn{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 10px}
+.btn:hover{border-color:#3d4f6e}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.ai{background:var(--ai-bg);border-color:#5b47a8;color:#d9ccff}
+.btn.icon{width:30px;height:30px;padding:0;display:grid;place-items:center;border-radius:50%}
+.pill{padding:2px 9px;border-radius:5px;font-size:11.5px;font-weight:700;letter-spacing:.6px;color:var(--blue-tx);border:1px solid #1f3d6e;background:#0d1a31;white-space:nowrap}
+.pill.done{color:var(--ok-tx);border-color:#1f5530;background:#0d2216}
+.att{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.att.need{background:var(--warn-bd)} .att.fail{background:var(--fail-bd)} .att.wait{background:#4f6a99} .att.done{background:#2a5a3a}
+.att.working{border:2px solid var(--ai);border-right-color:transparent;animation:sp 1s linear infinite;background:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.attl{font-size:11px;font-weight:600;letter-spacing:.4px;display:flex;align-items:center;gap:6px;color:var(--muted)}
+.attl.need{color:var(--warn-tx)} .attl.fail{color:var(--fail-tx)} .attl.working{color:var(--ai)}
+
+/* ===== column-flow graph ===== */
+.gwrap{padding:12px 16px 12px;overflow-x:auto}
+.g{display:flex;align-items:stretch;min-width:1060px}
+.col{border:1px solid var(--line);border-radius:10px;background:#0c121d;padding:0 8px 10px;display:flex;flex-direction:column;transition:opacity .3s}
+.col.cur{border-color:var(--blue);background:linear-gradient(180deg,#0f1f3d 0,#0c1528 100%)}
+.col.unchecked{border-style:dashed;background:transparent}
+.colh{text-align:center;padding:7px 2px 8px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;font-weight:600;color:var(--text);white-space:nowrap}
+.colh span{display:block;font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted);font-size:11.5px}
+.colh .ok{color:var(--ok-tx)}
+.col.cur .colh{color:var(--blue-tx)}
+.col.unchecked .colh,.col.unchecked .colh span{color:var(--dim)}
+.flow{display:flex;flex-direction:column;flex:1}
+.lvl{display:flex;gap:6px}
+.conn{display:block;width:100%;height:18px;overflow:visible}
+.conn path{fill:none;stroke:var(--ok-bd);stroke-width:1.5;opacity:.75}
+.conn.off path{stroke:var(--dim);stroke-dasharray:4 3}
+.blk{flex:1 1 0;min-width:0;border:1px solid;border-radius:8px;padding:5px 9px;font-size:11.5px;line-height:1.3;position:relative;cursor:default;transition:opacity .25s,filter .25s,box-shadow .25s}
+.blk b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk b em{font-style:normal;font-weight:400;opacity:.7;font-size:11px}
+.blk span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85}
+.flow .lvl:not(:first-child) .blk::before{content:"";position:absolute;left:50%;top:-6px;transform:translateX(-50%);border:4px solid transparent;border-top:5px solid var(--ok-bd);opacity:.8}
+.flow .conn.off+.lvl .blk::before{border-top-color:var(--dim)}
+.b-ok{background:var(--ok-bg);border-color:var(--ok-bd);color:#cfe9d7} .b-ok b{color:var(--ok-tx)}
+.b-warn{background:var(--warn-bg);border-color:var(--warn-bd);color:#f1dfb0} .b-warn b{color:var(--warn-tx)}
+.b-fail{background:var(--fail-bg);border-color:var(--fail-bd);color:#f5c9c6} .b-fail b{color:var(--fail-tx)}
+.b-wait{background:#101b30;border-color:#35588f;color:#b9cdee} .b-wait b{color:var(--blue-tx)}
+.b-lock{border-style:dashed;border-color:var(--line2);color:var(--dim);background:transparent} .b-lock b{color:#6a7891}
+.b-na{border-style:dashed;border-color:var(--line2);color:var(--dim);background:transparent} .b-na b{color:#6a7891}
+.b-idle{border-style:dashed;border-color:#1e2940;color:#3d4a61;background:transparent} .b-idle b{color:#4d5a73;font-weight:500}
+.b-tpl{background:var(--panel2);border-color:var(--line2);color:var(--muted);cursor:pointer} .b-tpl b{color:var(--text)}
+.b-tpl:hover{border-color:#4d6288}
+.b-tpl.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset;background:var(--blue-bg)}
+.b-tpl.each{box-shadow:3px 3px 0 -1px var(--panel2),3px 3px 0 0 var(--line2),6px 6px 0 -1px var(--panel2),6px 6px 0 0 var(--line2)}
+.b-tpl.each.sel{box-shadow:0 0 0 1px var(--blue) inset,3px 3px 0 -1px var(--panel2),3px 3px 0 0 var(--blue),6px 6px 0 -1px var(--panel2),6px 6px 0 0 var(--blue)}
+.addb{margin-top:10px;font-size:11px;color:var(--dim);border:1px dashed var(--line2);border-radius:8px;padding:4px;text-align:center;cursor:pointer}
+.blk .ty{position:absolute;top:4px;right:6px;font-size:9.5px;color:var(--dim);font-family:var(--mono);opacity:1}
+.blk.ai{box-shadow:0 0 0 2px var(--ai),0 0 16px -4px var(--ai)}
+.blk.ai::after{content:"✦";position:absolute;top:3px;right:6px;color:var(--ai);font-size:11px}
+.blk.act{cursor:pointer}
+.blk.act:hover{filter:brightness(1.15)}
+.blk.next{animation:ring 1.8s infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(243,205,106,.55)}100%{box-shadow:0 0 0 9px rgba(243,205,106,0)}}
+.ggate{width:34px;flex:none;position:relative}
+.ggate .gate{position:absolute;left:50%;top:9px;transform:translateX(-50%);width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;border:1.5px solid;background:var(--bg);z-index:2}
+.ggate::before{content:"";position:absolute;left:0;right:0;top:22px;border-top:1.5px solid var(--line2)}
+.ggate.done::before{border-top-color:var(--ok-bd);opacity:.6}
+.gate.g-done{border-color:var(--ok-bd);color:var(--ok-tx)}
+.gate.g-pend{border-color:var(--warn-bd);color:var(--warn-tx);font-size:9.5px}
+.gate.g-fail{border-color:var(--fail-bd);color:var(--fail-tx)}
+.gate.g-lock{border-color:var(--line2);color:var(--dim);border-style:dashed;font-size:10px}
+.gate.g-ready{border-color:var(--blue);color:#fff;background:var(--blue);cursor:pointer;animation:pulse 1.6s infinite}
+.gate.g-tpl{border-color:var(--line2);color:var(--muted);cursor:pointer}
+.gate.g-tpl.sel{border-color:var(--blue);background:var(--blue);color:#fff}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6)}100%{box-shadow:0 0 0 10px rgba(59,130,246,0)}}
+/* refresh scan */
+.scan-wait{opacity:.28;filter:grayscale(1)}
+.scan-now{opacity:1!important;filter:none!important;box-shadow:0 0 0 2px rgba(134,182,255,.9),0 0 18px rgba(59,130,246,.7)!important}
+.col.scan-col{border-color:#5d8fe0}
+.rstat{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.rstat b{color:var(--text);font-weight:500}
+
+/* ===== My tickets ===== */
+#tickets{flex-direction:column;overflow:auto}
+.tl{padding:16px 24px 40px;max-width:1720px;width:100%;margin:0 auto}
+.tl-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.tl-top h2{margin:0;font-size:18px}
+.filters{display:flex;gap:6px;margin-left:12px}
+.filters span{padding:3px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);cursor:pointer;font-size:12px}
+.filters span.on{background:var(--panel2);color:var(--text);border-color:#3d4f6e}
+.filters span b{margin-left:4px;color:var(--text)}
+.tcard{border:1px solid var(--line);border-radius:14px;background:#0c111b;margin-bottom:14px;cursor:pointer;transition:border-color .2s,transform .2s var(--ease),box-shadow .2s}
+.tcard:hover{border-color:#34507f;transform:translateY(-2px);box-shadow:0 10px 30px -12px rgba(59,130,246,.35)}
+.tc-h{display:flex;align-items:center;gap:10px;padding:12px 18px 0}
+.tc-title{font-size:14.5px;font-weight:600;display:flex;gap:10px;align-items:baseline;width:fit-content}
+.tc-title .key{color:var(--blue-tx)}
+.tc-h .right{margin-left:auto;display:flex;gap:12px;align-items:center}
+
+/* ===== Cockpit ===== */
+.list{width:250px;flex:none;border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:10px 8px;view-transition-name:inbox}
+.li{display:flex;gap:9px;align-items:flex-start;padding:7px 8px;border-radius:7px;cursor:pointer}
+.li:hover{background:var(--panel2)}
+.li.sel{background:var(--blue-bg);box-shadow:0 0 0 1px #2b4f8a inset}
+.li .att{margin-top:4px}
+.li b{display:block;font-size:12px;color:var(--blue-tx);font-weight:600}
+.li span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;color:var(--muted)}
+.li.sel span{color:var(--text)}
+.li.dn{opacity:.55}
+.sep{height:1px;background:var(--line);margin:6px 8px}
+.focus{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.thead{padding:10px 16px 0;display:flex;align-items:center;gap:12px}
+.thead h1{font-size:15px;margin:0;font-weight:600;width:fit-content;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thead h1 .key{color:var(--blue-tx);margin-right:8px}
+.thead .acts{margin-left:auto;display:flex;gap:8px;align-items:center}
+#c-board{view-transition-name:board}
+.tui{flex:1;min-height:0;background:#05070b;border-top:1px solid var(--line);padding:12px 18px;overflow:auto;white-space:pre-wrap;font:12.5px/1.55 var(--mono);color:#c8d1e0;view-transition-name:work}
+.tui .p{color:#7fb2ff} .tui .t{color:#e8a26b} .tui .ok{color:var(--ok-tx)} .tui .d{color:#56627a} .tui .y{color:var(--warn-tx)} .tui .r{color:var(--fail-tx)} .tui .v{color:var(--ai)}
+.caret{display:inline-block;width:8px;height:15px;background:#c8d1e0;vertical-align:-3px;animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+
+/* popovers */
+.pop{position:fixed;z-index:50;width:340px;background:#141c2b;border:1px solid #33456a;border-radius:10px;padding:12px 14px;box-shadow:0 18px 40px -10px rgba(0,0,0,.7);font-size:12.5px;display:none}
+.pop.on{display:block;animation:popin .18s var(--ease)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px)}}
+.pop h4{margin:0 0 6px;font-size:13px}
+.pop .q{color:var(--muted);margin-bottom:8px}
+.pop .quote{border:1px dashed #5b47a8;border-radius:6px;padding:7px 9px;background:#120f22;color:#e3dcff;margin-bottom:8px}
+.pop .row{display:flex;gap:6px;flex-wrap:wrap}
+.pop ul{margin:0;padding:0;list-style:none}
+.pop li{display:flex;gap:8px;align-items:center;padding:3px 0}
+.pop .sw{width:22px;height:14px;border-radius:4px;border:1px solid;flex:none}
+.pop .k{color:var(--dim);font-size:11px;letter-spacing:.5px;text-transform:uppercase;margin:8px 0 3px}
+
+/* view transitions */
+::view-transition-group(board),::view-transition-group(ttitle){animation-duration:.55s;animation-timing-function:var(--ease)}
+::view-transition-old(board),::view-transition-new(board){height:100%;width:100%;object-fit:cover;object-position:left top}
+::view-transition-new(work){animation:vt-up .5s .08s var(--ease) both}
+::view-transition-old(work){animation:vt-down .28s ease both}
+::view-transition-new(inbox){animation:vt-left .5s var(--ease) both}
+::view-transition-old(inbox){animation:vt-left-out .28s ease both}
+::view-transition-old(root){animation:vt-fade-out .22s ease both}
+::view-transition-new(root){animation:vt-fade-in .4s .1s ease both}
+@keyframes vt-up{from{transform:translateY(80px);opacity:0}}
+@keyframes vt-down{to{transform:translateY(80px);opacity:0}}
+@keyframes vt-left{from{transform:translateX(-60px);opacity:0}}
+@keyframes vt-left-out{to{transform:translateX(-60px);opacity:0}}
+@keyframes vt-fade-out{to{opacity:0}}
+@keyframes vt-fade-in{from{opacity:0}}
+
+/* ===== editor ===== */
+.ed{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 400px;min-width:0}
+.canvaswrap{overflow:auto;padding:14px 16px}
+.edbar{display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap}
+.edbar .file{font:12px var(--mono);color:var(--muted);margin-right:auto}
+.edbar .file b{color:var(--ok-tx);font-weight:400} .edbar .file .br{color:var(--ai)}
+.edsub{font-size:12px;color:var(--muted);margin:0 0 6px}
+.edsub b{color:var(--text);font-weight:500}
+.side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:14px 16px}
+.side h3{margin:0 0 2px;font-size:14px}
+.fld{margin:12px 0}
+.fld label{display:block;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.inp{border:1px solid var(--line2);background:#0b111c;border-radius:6px;padding:6px 9px;font-size:12.5px}
+.inp.code{font-family:var(--mono);font-size:12px;white-space:pre-wrap}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden;flex-wrap:wrap}
+.seg span{padding:4px 9px;font-size:12px;color:var(--muted);border-right:1px solid var(--line2)}
+.seg span:last-child{border-right:0}
+.seg span.on{background:var(--blue);color:#fff}
+.hint{font-size:11.5px;color:var(--dim);margin-top:4px}
+table.sa{width:100%;border-collapse:collapse;font-size:12px}
+table.sa td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.sa td:first-child{white-space:nowrap}
+table.sa code{font-family:var(--mono);font-size:11.5px;color:#cfe0ff}
+.yaml{font:11.5px/1.55 var(--mono);background:#070a11;border:1px solid var(--line);border-radius:8px;padding:10px 12px;white-space:pre;overflow:auto;color:#c8d1e0}
+.yaml .k{color:#7fb2ff} .yaml .s{color:var(--ok-tx)} .yaml .c{color:var(--dim)}
+.below{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;margin-top:10px}
+.card{border:1px solid var(--line2);border-radius:8px;background:var(--panel2);padding:10px 12px}
+.card h4{margin:0 0 6px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.card h4 em{font-style:normal;text-transform:none;letter-spacing:0;color:var(--dim)}
+table.repos{width:100%;border-collapse:collapse;font-size:12px}
+table.repos td,table.repos th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+table.repos th{color:var(--muted);font-weight:500;font-size:11px}
+
+/* ===== concepts ===== */
+.cwrap{flex:1;overflow:auto;padding:22px 26px}
+.layers{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:1240px}
+.layer{border:1px solid var(--line2);border-radius:12px;padding:12px 14px;background:var(--panel)}
+.layer h3{margin:0 0 4px;font-size:12px;letter-spacing:.7px;text-transform:uppercase}
+.layer .lead{color:var(--muted);font-size:12px;margin-bottom:10px}
+.cbox{border:1px solid var(--line2);border-radius:8px;padding:7px 10px;margin:6px 0;background:var(--panel2)}
+.cbox b{display:block} .cbox span{color:var(--muted);font-size:12px}
+.cbox.in{margin-left:16px} .cbox.in2{margin-left:32px}
+.cbox.hl{border-color:var(--ai);background:var(--ai-bg)} .cbox.hl2{border-color:var(--blue);background:var(--blue-bg)}
+.rules{max-width:1240px;margin-top:18px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.rule{border-left:3px solid var(--blue);padding:6px 12px;background:var(--panel);border-radius:0 8px 8px 0}
+.rule b{display:block;margin-bottom:3px} .rule span{color:var(--muted);font-size:12px}
+.rule.ai{border-left-color:var(--ai)}
+.tree{font:12px/1.6 var(--mono);white-space:pre;color:#c8d1e0;max-width:1240px;margin-top:18px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#070a11}
+.tree .c{color:var(--dim)} .tree .h{color:var(--ok-tx)} .tree .b{color:var(--blue-tx)} .tree .y{color:var(--warn-tx)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+  <div class="logo"><i></i>Ticket Cockpit <small>draft v0.4</small></div>
+  <div class="project">Deck Builder ▾</div>
+  <div class="tabs">
+    <button class="on" data-s="tickets">My tickets</button>
+    <button data-s="cockpit">Cockpit</button>
+    <button data-s="editor">Pipeline editor</button>
+    <button data-s="concepts">Concepts</button>
+  </div>
+  <button class="live" id="liveBtn"><span class="d warn"></span>Live</button>
+</div>
+
+<!-- ================= MY TICKETS ================= -->
+<section class="screen on" id="tickets">
+  <div class="tl">
+    <div class="tl-top">
+      <h2>My tickets</h2>
+      <div class="filters" id="filters"></div>
+      <span class="rstat" id="rstat-all" style="margin-left:auto">Refreshed when the app opened · 09:12</span>
+      <button class="btn" id="refreshAll">↻ Refresh all</button>
+      <button class="btn icon" data-help>?</button>
+    </div>
+    <div id="tlist"></div>
+  </div>
+</section>
+
+<!-- ================= COCKPIT ================= -->
+<section class="screen" id="cockpit">
+  <aside class="list" id="clist"></aside>
+  <main class="focus">
+    <div class="thead" id="c-head"></div>
+    <div id="c-board"></div>
+    <div class="tui" id="c-tui"></div>
+  </main>
+</section>
+
+<!-- ================= EDITOR ================= -->
+<section class="screen" id="editor">
+  <div class="ed">
+    <div class="canvaswrap">
+      <div class="edbar">
+        <span class="file">AI-SDLC-App/<b>projects/deck-builder/pipeline.yaml</b> · 2 unsaved changes</span>
+        <button class="btn">⟳ Resync columns</button>
+        <button class="btn pri">Save &amp; commit</button>
+      </div>
+      <div class="edsub">Columns come from <b>Jira board DIG1</b> and are read-only. Inside each column you build a <b>flow of blocks</b> from top to bottom. Stacked blocks run <b>once per change, in parallel</b>, and join into the next block. Click a block or a gate.</div>
+      <div id="e-board"></div>
+      <div class="below">
+        <div class="card">
+          <h4>Environments <em>project.yaml · used by deploy blocks</em></h4>
+          <table class="repos">
+            <tr><th>Repo</th><th>dev</th><th>stage</th><th>prod</th></tr>
+            <tr><td>ba-backend / ba-frontend</td><td>GH Actions · meta-build.yaml</td><td>Spinnaker · st (manual)</td><td>Spinnaker · prod</td></tr>
+            <tr><td>dataform</td><td>GH Actions · deploy-np.yaml</td><td>GH Actions · deploy-stage.yaml</td><td>GH Actions · deploy-prod.yaml</td></tr>
+            <tr><td>dtb-action-service</td><td>Jenkins · deploy-dev</td><td>Jenkins · deploy-st</td><td>Jenkins · deploy-prod</td></tr>
+            <tr><td>dtb-docs</td><td>GH Actions · publish.yaml</td><td class="dim">— (n/a)</td><td class="dim">same as dev</td></tr>
+          </table>
+          <div class="hint">In E = the latest successful deploy run's commit contains the change (git ancestry, with a patch-id fallback). No git flow is assumed.</div>
+        </div>
+        <div class="card">
+          <h4>Harness <em>harness/claude-code.yaml</em></h4>
+          <div class="yaml"><span class="k">tool</span>: claude-code
+<span class="k">session</span>: { <span class="k">per</span>: ticket, <span class="k">cwd</span>: <span class="s">workspaces/{{ticket.key}}</span> }
+<span class="k">inject</span>: { <span class="k">mcp</span>: sdlc, <span class="k">instructions</span>: <span class="s">guardrails.md</span> }
+<span class="k">observe</span>: <span class="k">hooks</span>: [SessionStart, PreToolUse, Notification, Stop]
+<span class="k">permissions</span>:
+  <span class="k">ask</span>:  [<span class="s">mcp__sdlc__code_comment</span>, <span class="s">mcp__sdlc__merge</span>]   <span class="c"># approve in the TUI</span>
+  <span class="k">deny</span>: [<span class="s">"Bash(gh pr merge*)"</span>, <span class="s">mcp__sdlc__tracker_move</span>]</div>
+        </div>
+      </div>
+    </div>
+    <aside class="side" id="side"></aside>
+  </div>
+</section>
+
+<!-- ================= CONCEPTS ================= -->
+<section class="screen" id="concepts">
+  <div class="cwrap">
+    <div class="layers">
+      <div class="layer">
+        <h3 style="color:var(--blue-tx)">1 · Configuration</h3>
+        <div class="lead"><span class="mono">projects/&lt;name&gt;/</span> in the AI-SDLC-App repo (no config branches).</div>
+        <div class="cbox"><b>Project</b><span>connectors + repos (your checkouts) + environments</span></div>
+        <div class="cbox in hl2"><b>Columns</b><span>the tracker board's columns. Read-only</span></div>
+        <div class="cbox in2 hl2"><b>Block flow per column</b><span>blocks top → bottom. "Per change" blocks run in parallel and join</span></div>
+        <div class="cbox in2"><b>Block</b><span>type (change · deploy · attest · tracker · prompt) · done_when · action set per state</span></div>
+        <div class="cbox in2"><b>Gate</b><span>between columns. Opens when the flow is done. You move the status</span></div>
+        <div class="cbox in hl"><b>Harness</b><span>how the app drives Claude Code: inject MCP + guardrails · hooks · permissions (ask/deny)</span></div>
+      </div>
+      <div class="layer">
+        <h3 style="color:var(--ok-tx)">2 · Runtime</h3>
+        <div class="lead">Derived from the tools on each refresh: when you click ↻ or when the app opens. No polling.</div>
+        <div class="cbox hl2"><b>Refresh, column by column</b><span>levels top → bottom (parallel inside a level). Stops at the first unfinished column or the status column. Later columns: not checked</span></div>
+        <div class="cbox in"><b>Change</b><span>a PR or MR in any repo, linked by the ticket key in its title or branch</span></div>
+        <div class="cbox in"><b>Block state</b><span>from facts: reviews, CI/CD runs, deployed commit, ancestry, comments</span></div>
+        <div class="cbox in"><b>Attestation</b><span>a human tick pinned to the deployed commits</span></div>
+        <div class="cbox in hl"><b>One Claude Code session per ticket</b><span>in the ticket's workspace (worktrees of your checkouts)</span></div>
+      </div>
+      <div class="layer">
+        <h3 style="color:var(--ai)">3 · Experience</h3>
+        <div class="lead">A desktop app (shell decided later).</div>
+        <div class="cbox"><b>My tickets</b><span>every ticket's flow. Click → animated into the Cockpit</span></div>
+        <div class="cbox"><b>Cockpit</b><span>a slim list · the graph · the pure Claude Code TUI</span></div>
+        <div class="cbox in hl"><b>Change through the TUI…</b><span>the agent works; outward actions stop at Claude Code's permission prompt</span></div>
+        <div class="cbox in hl2"><b>…or through the graph</b><span>click a block or gate → a confirm popover</span></div>
+        <div class="cbox"><b>● Live / ?</b><span>connectors and the legend live behind two small buttons</span></div>
+      </div>
+    </div>
+    <div class="rules">
+      <div class="rule"><b>Columns are the tracker's columns.</b><span>Each one holds a flow of blocks. The gate opens when the flow is done.</span></div>
+      <div class="rule"><b>Refresh like the work flows.</b><span>Left to right, top to bottom. Stop at the first unfinished column.</span></div>
+      <div class="rule ai"><b>Two ways to act, one approval model.</b><span>The TUI permission prompt or a graph popover. Never silently.</span></div>
+      <div class="rule"><b>Deterministic in code, judgment in the agent.</b><span>Checks are built in. The agent drafts and fixes.</span></div>
+    </div>
+    <div class="tree"><span class="b">refresh(DIG1-440)</span>
+├─ <span class="h">To Do</span>         Start                                      ✓   <span class="c">tracker</span>
+├─ <span class="h">In Progress</span>   #497 ∥ #510 ∥ #34  PR opened                ✓   <span class="c">3 code-host calls, in parallel</span>
+├─ <span class="b">Code Review</span>   #497 ∥ #510 ∥ #34  review &amp; merge           <span class="y">●</span>   <span class="c">#510 has a drafted reply</span>
+│                Deploy to dev                              2/3 <span class="c">CI/CD runs + git ancestry</span>
+│                Validated in dev                           ☐
+│                <span class="y">→ column not done: stop</span>
+├─ E2E Testing   <span class="c">not checked: no stage API calls</span>
+└─ …             <span class="c">not checked</span></div>
+  </div>
+</section>
+
+<div class="pop" id="pop"></div>
+
+<script>
+/* ---------- pipeline template (columns = Jira board, fixed) ---------- */
+const JIRA=['To Do','In Progress','Code Review','End to End Testing','Ready for Demo','Pending Deployment','Done'];
+const TPL=[
+ {n:'To Do',lv:[[{id:'start',t:'Start',ty:'tracker'}]]},
+ {n:'In Progress',lv:[{each:'opened',t:'PR opened',ty:'change'}]},
+ {n:'Code Review',lv:[{each:'merged',t:'Review & merge',ty:'change'},[{id:'dev',t:'Deploy to dev',ty:'deploy'}],[{id:'val',t:'Validated in dev',ty:'attest'}]]},
+ {n:'E2E Testing',lv:[[{id:'stage',t:'Promote to stage',ty:'deploy'}],[{id:'tested',t:'Tested on stage',ty:'attest'}]]},
+ {n:'Ready for Demo',lv:[[{id:'pmnote',t:'Note to PM',ty:'prompt'}],[{id:'pm',t:'PM approved',ty:'tracker'}]]},
+ {n:'Pending Depl.',lv:[[{id:'prod',t:'Released to prod',ty:'deploy'}]]},
+ {n:'Done',lv:[[{id:'done',t:'Done',ty:'tracker'}]]}
+];
+const N=(c,s,o={})=>({c,s,...o});
+
+/* ---------- tickets ---------- */
+const T=[
+{key:'DIG1-324',title:'Replace scheduled jobs with triggerable admin endpoints',att:'fail',cur:3,
+ ch:[{k:'#13',r:'dtb-action-service',opened:N('ok','opened 11/14'),merged:N('ok','merged')}],
+ b:{start:N('ok','started'),dev:N('ok','in dev @ 9c1e0a7'),val:N('ok','✓ @ 9c1e0a7'),
+    stage:N('fail','CrashLoopBackOff ×13',{next:1,act:{h:'Promote to stage: failing',q:'Jenkins deploy-st #232 deployed 9c1e0a7 (it contains #13), but 1 of 1 new pod is crashing: KeyError ADMIN_TOKEN_AUDIENCE.',btn:[['▶ Diagnose in Claude Code','ai'],['Open run ↗',''],['Copy pod logs','']]}})
+    ,tested:N('lock','waits for stage')},
+ tui:`<span class="d">claude · /workspaces/DIG1-324 · idle since 11/16</span>
+
+<span class="p">&gt;</span> promote-checklist for DIG1-324
+<span class="v">●</span> sdlc.get_context <span class="d">(ticket, 1 change, dev @ 9c1e0a7)</span>
+  Checklist ready: run <span class="y">deploy-st</span> for 9c1e0a7, then check /admin/jobs on st.
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────╯</span>
+  <span class="d">? for shortcuts</span>`},
+
+{key:'DIG1-448',title:'[Deck Builder] Attachment slide: one-department segments get a single self-paired attachment bar',att:'need',cur:2,
+ ch:[{k:'#488',r:'ba-backend',opened:N('ok','opened 11/4'),merged:N('ok','merged')},{k:'#212',r:'ba-frontend',opened:N('ok','opened 11/10'),merged:N('ok','merged')},{k:'#503',r:'ba-backend',opened:N('ok','opened 11/15'),merged:N('warn','feedback · agent',{ai:1})}],
+ b:{start:N('ok','started'),dev:N('wait','2/3 in dev'),val:N('lock','waits for dev')},
+ tui:`<span class="d">claude · /workspaces/DIG1-448 · ba-backend, ba-frontend</span>
+
+<span class="p">&gt;</span> address-review-feedback #503 (attachment_slide.py:77)
+<span class="v">●</span> sdlc.get_context <span class="d">(ticket, 3 changes in 2 repos, 1 open thread)</span>
+<span class="v">●</span> Read <span class="d">ba-backend/src/deck/attachment_slide.py</span>
+<span class="v">●</span> Update <span class="d">ba-backend/src/deck/attachment_slide.py</span>  <span class="ok">+14</span> <span class="r">−3</span>
+<span class="v">●</span> The local fixture DB needs the new column before the tests can run.
+
+<span class="y">╭─ Bash command ───────────────────────────────────────────────────────────╮</span>
+<span class="y">│</span>  make migrate-local                       <span class="d">(cwd: ba-backend)</span>
+<span class="y">│</span>
+<span class="y">│</span>  Do you want to proceed?
+<span class="y">│</span>  <span class="p">❯ 1. Yes</span>
+<span class="y">│</span>    2. Yes, and don't ask again for make migrate-local
+<span class="y">│</span>    3. No, and tell Claude what to do differently
+<span class="y">╰──────────────────────────────────────────────────────────────────────────╯</span>`},
+
+{key:'DIG1-440',title:'[Deck Builder] Event Analysis drops week 53 in 53-week years',att:'need',cur:2,
+ ch:[{k:'#497',r:'ba-backend',opened:N('ok','opened 11/14'),merged:N('ok','merged')},
+     {k:'#510',r:'ba-backend',opened:N('ok','opened 11/17'),merged:N('warn','reply drafted',{next:1,act:{h:'#510: post the drafted reply?',quote:'Good catch. The range now ends at the last ISO week of the year, so 53-week years (2026, 2032) include week 53. I added a test for 2026. Fixed in a41c9e2.',q:'Runs code.comment on the thread at event_analysis.py:118 and resolves it. Claude Code is asking the same thing in the terminal.',btn:[['Post & resolve','pri'],['Edit in Claude Code','ai'],['View diff ↗','']]}})},
+     {k:'#34',r:'dtb-docs',opened:N('ok','opened 11/15'),merged:N('ok','merged')}],
+ b:{start:N('ok','started'),dev:N('wait','2/3 in dev'),val:N('lock','stale · waits for dev')},
+ tui:`<span class="d">claude · /workspaces/DIG1-440 · ba-backend, dtb-docs</span>
+
+<span class="p">&gt;</span> address-review-feedback #510 (event_analysis.py:118)
+<span class="v">●</span> sdlc.get_context <span class="d">(ticket, 3 changes, 1 open thread, PM comment of 11/16)</span>
+<span class="v">●</span> The reviewer is right: <span class="y">week_range()</span> builds the range with <span class="y">range(1, 53)</span>, so it is off by one.
+<span class="v">●</span> Update <span class="d">ba-backend/src/deck/event_analysis.py</span>  <span class="ok">+6</span> <span class="r">−2</span>
+<span class="v">●</span> Bash <span class="d">pytest tests/deck -q</span>
+  <span class="ok">42 passed in 3.1s</span>
+<span class="v">●</span> Bash <span class="d">git commit -m "DIG1-440 include ISO week 53 in range builder" &amp;&amp; git push</span>
+<span class="v">●</span> Fixed and pushed (a41c9e2). I'll reply on the thread:
+
+<span class="y">╭─ Tool use ───────────────────────────────────────────────────────────────╮</span>
+<span class="y">│</span>  sdlc - code_comment(change: "#510", thread: "r118", resolve: true)
+<span class="y">│</span>  "Good catch. The range now ends at the last ISO week of the year, so
+<span class="y">│</span>   53-week years (2026, 2032) include week 53. I added a test for 2026.
+<span class="y">│</span>   Fixed in a41c9e2."
+<span class="y">│</span>
+<span class="y">│</span>  Do you want to proceed?
+<span class="y">│</span>  <span class="p">❯ 1. Yes</span>
+<span class="y">│</span>    2. No, and tell Claude what to do differently
+<span class="y">╰──────────────────────────────────────────────────────────────────────────╯</span>`},
+
+{key:'DIG1-460',title:'[Deck Builder] PPTX export keeps chart colours',att:'need',cur:4,
+ ch:[{k:'#219',r:'ba-frontend',opened:N('ok','opened 11/11'),merged:N('ok','merged')}],
+ b:{start:N('ok','started'),dev:N('ok','in dev @ c88d120'),val:N('ok','✓ @ c88d120'),stage:N('ok','in st @ c88d120'),tested:N('ok','✓ @ c88d120'),pmnote:N('ok','posted 11/16'),pm:N('ok','"looks good" · PM')},
+ tui:`<span class="d">claude · /workspaces/DIG1-460 · ba-frontend</span>
+
+<span class="p">&gt;</span> draft-pm-note for DIG1-460
+<span class="v">●</span> sdlc.draft <span class="d">(kind: pm_note)</span>
+  Drafted. You posted it on 11/16 at 14:02. The PM replied "looks good" today.
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────╯</span>
+  <span class="d">? for shortcuts</span>`},
+
+{key:'DIG1-315',title:'[Email] Standardize rate metrics using bps',att:'working',cur:1,
+ ch:[{k:'#508',r:'ba-backend',opened:N('wait','draft · agent',{ai:1})},{k:'#77',r:'dataform',opened:N('wait','draft')}],
+ b:{start:N('ok','started')},
+ tui:`<span class="d">claude · /workspaces/DIG1-315 · ba-backend, dataform</span>
+
+<span class="p">&gt;</span> build-ticket DIG1-315 (spec: ai/specs/DIG1-315/)
+<span class="v">●</span> sdlc.get_context <span class="d">(ticket, spec, 2 attachments)</span>
+<span class="v">●</span> Update <span class="d">dataform/definitions/rates/*.sqlx</span>  <span class="ok">+48</span> <span class="r">−31</span>
+<span class="v">●</span> Write <span class="d">ba-backend/src/email/rates.py</span>
+<span class="v">●</span> Bash <span class="d">pytest tests/email -q</span>
+  <span class="r">3 failed</span>, 18 passed
+<span class="v">●</span> Update <span class="d">ba-backend/src/email/rates.py</span>  <span class="ok">+9</span> <span class="r">−4</span>
+<span class="v">●</span> Bash <span class="d">pytest tests/email -q</span>
+
+<span class="t">✻ Working…</span> <span class="d">(7m 12s · esc to interrupt)</span>`},
+
+{key:'DIG1-471',title:'[Deck Builder] Segment legend wraps on narrow slides',att:'wait',cur:2,
+ ch:[{k:'#221',r:'ba-frontend',opened:N('ok','opened 11/16'),merged:N('wait','in review · 0/1')}],
+ b:{start:N('ok','started'),dev:N('lock','waits for merge'),val:N('lock','waits')},
+ tui:`<span class="d">claude · /workspaces/DIG1-471 · ba-frontend · idle</span>
+
+<span class="p">&gt;</span> build-ticket DIG1-471
+<span class="v">●</span> Opened ba-frontend #221 and requested review.
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="p">&gt;</span> <span class="caret"></span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────╯</span>`},
+
+{key:'DIG1-323',title:'Action Service Authentication',att:'done',cur:7,
+ ch:[{k:'#11',r:'dtb-action-service',opened:N('ok','opened 11/10'),merged:N('ok','merged')}],
+ b:{start:N('ok','started'),dev:N('ok','in dev'),val:N('ok','✓'),stage:N('ok','in st'),tested:N('ok','✓'),pmnote:N('ok','posted'),pm:N('ok','approved'),prod:N('ok','in prod @ 8d02f7e'),done:N('ok','done')},
+ tui:`<span class="d">claude · session ended when DIG1-323 reached Done · transcript kept</span>`}
+];
+T.forEach(t=>{t.status=t.cur>=7?'DONE':JIRA[t.cur].toUpperCase()});
+const byKey=k=>T.find(t=>t.key===k);
+const ATTL={need:'Needs you',fail:'Failure',working:'Agent working',wait:'Waiting on others',done:'Done'};
+
+/* ---------- popover registry ---------- */
+let POP={},pid=0;
+const reg=o=>{const id='p'+(pid++);POP[id]=o;return id};
+const popEl=document.getElementById('pop');
+function openPop(id,anchor){
+  const o=POP[id]; if(!o) return;
+  popEl.innerHTML=(o.h?`<h4>${o.h}</h4>`:'')+(o.quote?`<div class="quote">${o.quote}</div>`:'')+(o.q?`<div class="q">${o.q}</div>`:'')+(o.html||'')+
+    (o.btn?`<div class="row">${o.btn.map(([l,c])=>`<button class="btn ${c}">${l}</button>`).join('')}<button class="btn" onclick="closePop()">Cancel</button></div>`:'');
+  const r=anchor.getBoundingClientRect();
+  let x=Math.max(10,Math.min(r.left,innerWidth-360)), y=r.bottom+8;
+  if(y+260>innerHeight) y=Math.max(10,r.top-270);
+  popEl.style.left=x+'px'; popEl.style.top=y+'px'; popEl.classList.add('on');
+}
+function closePop(){popEl.classList.remove('on')}
+document.addEventListener('click',e=>{
+  const h=e.target.closest('[data-help]');
+  if(h){e.stopPropagation();openPop(HELP,h);return}
+  const a=e.target.closest('[data-pop]');
+  if(a){e.stopPropagation();openPop(a.dataset.pop,a);return}
+  if(!e.target.closest('.pop')) closePop();
+},true);
+
+/* ---------- graph renderer ---------- */
+const DONE=['ok','na'];
+function conn(k,m,on){
+  let d='';
+  if(k===m){for(let i=0;i<k;i++){const x=(2*i+1)/(2*k)*100;d+=`M${x},0 L${x},20 `}}
+  else for(let i=0;i<k;i++)for(let j=0;j<m;j++){const a=(2*i+1)/(2*k)*100,b=(2*j+1)/(2*m)*100;d+=`M${a},0 C${a},11 ${b},9 ${b},20 `}
+  return `<svg class="conn ${on?'':'off'}" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="${d}" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function levelsOf(t,ci){
+  const checked=t&&ci<=Math.min(t.cur,6);
+  return TPL[ci].lv.map(L=>{
+    if(L.each){
+      if(!t) return [{tpl:1,each:1,id:L.each,t:L.t,ty:L.ty}];
+      return t.ch.map(c=>{const n=checked?(c[L.each]||N('lock','waits')):N('idle','');return {...n,t:`${c.k} <em>${c.r}</em>`,ty:L.ty}});
+    }
+    return L.map(b=>{
+      if(!t) return {tpl:1,id:b.id,t:b.t,ty:b.ty};
+      const n=checked?(t.b[b.id]||N('lock','waits')):N('idle','');
+      return {...n,t:b.t,ty:b.ty};
+    });
+  });
+}
+function graph(t,sel){
+  let h='<div class="g">';
+  for(let ci=0;ci<7;ci++){
+    const lv=levelsOf(t,ci);
+    const w=Math.max(...lv.map(l=>l.length));
+    const blocks=lv.flat(), d=blocks.filter(b=>DONE.includes(b.c)).length;
+    const st=!t?'':t.cur>=7||ci<t.cur?'done':ci===t.cur?'cur':'unchecked';
+    const nl=TPL[ci].lv.length;
+    const sub=!t?`<span>${nl} level${nl>1?'s':''}</span>`:st==='unchecked'?'<span>not checked</span>':st==='done'?'<span class="ok">✓ done</span>':`<span>${d} of ${blocks.length} done</span>`;
+    h+=`<div class="col ${st}" data-col="${ci}" style="flex:${w} 1 0;min-width:${w*92+16}px"><div class="colh">${TPL[ci].n}${sub}</div><div class="flow">`;
+    lv.forEach((L,li)=>{
+      if(li>0){const prev=lv[li-1];h+=conn(prev.length,L.length,!t||prev.every(b=>DONE.includes(b.c)))}
+      h+=`<div class="lvl">`+L.map(b=>{
+        if(b.tpl) return `<div class="blk b-tpl ${b.each?'each':''} ${sel===b.id?'sel':''}" data-b="${b.id}" data-col="${ci}" data-lvl="${li}"><b>${b.t}</b><span>${b.ty} · ${b.each?'× each change':'once'}</span></div>`;
+        const pop=b.act?` data-pop="${reg(b.act)}"`:'';
+        return `<div class="blk b-${b.c} ${b.ai?'ai':''} ${b.act?'act':''} ${b.next?'next':''}" data-col="${ci}" data-lvl="${li}"${pop}><b>${b.t}</b>${b.s?`<span>${b.s}</span>`:''}</div>`;
+      }).join('')+`</div>`;
+    });
+    if(!t) h+=`<div class="addb">+ block</div>`;
+    h+=`</div></div>`;
+    if(ci<6){
+      let g,lbl,pop='';
+      if(!t){g='g-tpl'+(sel==='g'+ci?' sel':'');lbl='→';pop=` data-g="g${ci}"`}
+      else if(t.cur>=7||ci<t.cur){g='g-done';lbl='✓'}
+      else if(ci===t.cur){
+        if(d===blocks.length){g='g-ready';lbl='→';pop=` data-pop="${reg({h:`Move ${t.key} to ${JIRA[ci+1]}?`,q:`Every block in ${TPL[ci].n} is done. Runs tracker.move("${JIRA[ci+1]}"), then the next column's first prompt goes into Claude Code.`,btn:[['Move to '+JIRA[ci+1],'pri']]})}"`}
+        else if(blocks.some(b=>b.c==='fail')){g='g-fail';lbl='!'}
+        else {g='g-pend';lbl=`${d}/${blocks.length}`}
+      } else {g='g-lock';lbl='🔒'}
+      h+=`<div class="ggate ${g==='g-done'?'done':''}"><div class="gate ${g}"${pop} data-gi="${ci}">${lbl}</div></div>`;
+    }
+  }
+  return h+'</div>';
+}
+
+/* ---------- refresh animation: column by column, level by level ---------- */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function refresh(root,t,stat){
+  const stop=Math.min(t.cur,6);
+  const all=[...root.querySelectorAll('.blk')].filter(b=>+b.dataset.col<=stop);
+  all.forEach(b=>b.classList.add('scan-wait'));
+  for(let ci=0;ci<=stop;ci++){
+    const col=root.querySelector(`.col[data-col="${ci}"]`); col.classList.add('scan-col');
+    const n=TPL[ci].lv.length;
+    for(let li=0;li<n;li++){
+      const bs=[...root.querySelectorAll(`.blk[data-col="${ci}"][data-lvl="${li}"]`)];
+      if(stat) stat.innerHTML=`Checking <b>${TPL[ci].n}</b> · ${bs.length>1?bs.length+' in parallel':bs[0].querySelector('b').textContent}…`;
+      bs.forEach(b=>b.classList.add('scan-now'));
+      await sleep(bs.length>1?520:380);
+      bs.forEach(b=>b.classList.remove('scan-now','scan-wait'));
+    }
+    col.classList.remove('scan-col');
+  }
+  const now=new Date().toTimeString().slice(0,5);
+  if(stat) stat.innerHTML=t.cur>=7?`All columns done · ${now}`:`Stopped at <b>${TPL[stop].n}</b> · later columns not checked · ${now}`;
+}
+
+/* ---------- My tickets ---------- */
+const ORDER={fail:0,need:1,working:2,wait:3,done:4};
+const sorted=()=>[...T].sort((a,b)=>ORDER[a.att]-ORDER[b.att]);
+let filter='all';
+const grp=a=>a==='fail'?'need':a;
+function renderFilters(){
+  const c=k=>T.filter(t=>grp(t.att)===k).length;
+  const F=[['all','All',T.length],['need','Needs you',c('need')],['working','Agent working',c('working')],['wait','Waiting',c('wait')],['done','Done',c('done')]];
+  document.getElementById('filters').innerHTML=F.map(([k,l,n])=>`<span class="${filter===k?'on':''}" data-f="${k}">${l}<b>${n}</b></span>`).join('');
+  document.querySelectorAll('#filters span').forEach(s=>s.onclick=()=>{filter=s.dataset.f;renderFilters();renderTickets()});
+}
+function renderTickets(){
+  document.getElementById('tlist').innerHTML=sorted().filter(t=>filter==='all'||grp(t.att)===filter).map(t=>`
+    <div class="tcard" data-k="${t.key}">
+      <div class="tc-h"><div class="tc-title"><span class="key">${t.key}</span>${t.title}</div>
+        <div class="right"><span class="attl ${t.att}"><i class="att ${t.att}"></i>${ATTL[t.att]}</span><span class="pill ${t.cur>=7?'done':''}">${t.status}</span></div></div>
+      <div class="tc-board"><div class="gwrap">${graph(t)}</div></div>
+    </div>`).join('');
+  document.querySelectorAll('.tcard').forEach(c=>c.onclick=e=>{if(!e.target.closest('[data-pop]'))openTicket(c.dataset.k)});
+}
+document.getElementById('refreshAll').onclick=async()=>{
+  const st=document.getElementById('rstat-all'); st.textContent=`Refreshing ${T.length} tickets…`;
+  await Promise.all([...document.querySelectorAll('.tcard')].map(c=>refresh(c,byKey(c.dataset.k),null)));
+  st.textContent='Refreshed · '+new Date().toTimeString().slice(0,5);
+};
+
+/* ---------- Cockpit ---------- */
+let current='DIG1-440';
+function renderList(){
+  let last=null;
+  document.getElementById('clist').innerHTML=sorted().map(t=>{
+    const g=grp(t.att), sep=last!==null&&g!==last?'<div class="sep"></div>':''; last=g;
+    return sep+`<div class="li ${t.key===current?'sel':''} ${t.att==='done'?'dn':''}" data-k="${t.key}" title="${ATTL[t.att]}"><i class="att ${t.att}"></i><div><b>${t.key}</b><span>${t.title.replace(/^\[[^\]]+\]\s*/,'')}</span></div></div>`;
+  }).join('');
+  document.querySelectorAll('#clist .li').forEach(i=>i.onclick=()=>switchTicket(i.dataset.k));
+}
+function renderCockpit(){
+  const t=byKey(current);
+  document.getElementById('c-head').innerHTML=`
+    <span class="btn icon" title="All tickets" onclick="backToTickets()" style="cursor:pointer">←</span>
+    <h1 id="c-title"><span class="key">${t.key}</span>${t.title}</h1>
+    <div class="acts"><span class="rstat" id="rstat">Last refresh: app opened · 09:12</span><span class="pill ${t.cur>=7?'done':''}">${t.status}</span>
+      <button class="btn" id="refreshOne">↻ Refresh</button><button class="btn icon" data-help>?</button><button class="btn icon" title="Open in Jira">↗</button></div>`;
+  document.getElementById('c-board').innerHTML=`<div class="gwrap">${graph(t)}</div>`;
+  document.getElementById('c-tui').innerHTML=t.tui;
+  document.getElementById('refreshOne').onclick=()=>refresh(document.getElementById('c-board'),t,document.getElementById('rstat'));
+  renderList();
+}
+
+/* ---------- help + live popovers ---------- */
+const sw=(bg,bd,dash)=>`<span class="sw" style="background:${bg};border-color:${bd};${dash?'border-style:dashed':''}"></span>`;
+const HELP=reg({h:'How to read the graph',html:`
+ <div class="k">Blocks</div><ul>
+ <li>${sw('var(--ok-bg)','var(--ok-bd)')}done</li>
+ <li>${sw('var(--warn-bg)','var(--warn-bd)')}needs you: click it, or answer in Claude Code</li>
+ <li>${sw('var(--fail-bg)','var(--fail-bd)')}failing</li>
+ <li>${sw('#101b30','#35588f')}in progress / waiting on others</li>
+ <li>${sw('transparent','var(--ai)')}Claude Code is working on it</li>
+ <li>${sw('transparent','var(--line2)',1)}waits for the block above</li>
+ <li>${sw('transparent','#1e2940',1)}not checked: the refresh stopped earlier</li></ul>
+ <div class="k">Gates (status moves)</div><ul>
+ <li>✓ moved · <b style="color:var(--warn-tx)">2/5</b> blocks done · <b style="color:var(--blue-tx)">→</b> ready: click to move</li></ul>
+ <div class="k">Refresh</div><div class="q" style="margin:0">Column by column, top to bottom. It stops at the first unfinished column.</div>`});
+const LIVE=reg({h:'Connections',html:`<ul>
+ <li><span class="att" style="background:var(--ok-bd)"></span>Jira Cloud · board DIG1</li>
+ <li><span class="att" style="background:var(--ok-bd)"></span>GitHub · 5 repos</li>
+ <li><span class="att" style="background:var(--ok-bd)"></span>GitHub Actions · Jenkins</li>
+ <li><span class="att" style="background:var(--ok-bd)"></span>Spinnaker · link only</li>
+ <li><span class="att need"></span>GKE: run <span class="mono">gcloud auth login</span></li>
+ <li><span class="att" style="background:var(--ai)"></span>Claude Code · 6 sessions</li></ul>`});
+document.getElementById('liveBtn').dataset.pop=LIVE;
+
+/* ---------- navigation + view transitions ---------- */
+function setScreen(id){
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.s===id));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
+  closePop();
+}
+const vt=fn=>document.startViewTransition?document.startViewTransition(fn):(fn(),{finished:Promise.resolve()});
+function openTicket(key){
+  const card=document.querySelector(`.tcard[data-k="${key}"]`);
+  const b=card.querySelector('.tc-board'), h=card.querySelector('.tc-title');
+  b.style.viewTransitionName='board'; h.style.viewTransitionName='ttitle';
+  vt(()=>{b.style.viewTransitionName='';h.style.viewTransitionName='';current=key;setScreen('cockpit');renderCockpit();document.getElementById('c-title').style.viewTransitionName='ttitle'})
+   .finished.then(()=>{const c=document.getElementById('c-title');if(c)c.style.viewTransitionName=''});
+}
+function backToTickets(){
+  document.getElementById('c-title').style.viewTransitionName='ttitle';
+  let b,h;
+  vt(()=>{document.getElementById('c-title').style.viewTransitionName='';setScreen('tickets');renderTickets();
+    const card=document.querySelector(`.tcard[data-k="${current}"]`);
+    if(card){b=card.querySelector('.tc-board');h=card.querySelector('.tc-title');b.style.viewTransitionName='board';h.style.viewTransitionName='ttitle';card.scrollIntoView({block:'center'})}
+  }).finished.then(()=>{if(b){b.style.viewTransitionName='';h.style.viewTransitionName=''}});
+}
+function switchTicket(key){
+  if(key===current) return;
+  document.getElementById('c-title').style.viewTransitionName='ttitle';
+  vt(()=>{current=key;renderCockpit();document.getElementById('c-title').style.viewTransitionName='ttitle'})
+   .finished.then(()=>{document.getElementById('c-title').style.viewTransitionName=''});
+}
+document.querySelectorAll('.tabs button').forEach(btn=>btn.onclick=()=>vt(()=>{setScreen(btn.dataset.s);if(btn.dataset.s==='cockpit')renderCockpit()}));
+
+/* ---------- editor ---------- */
+const B={
+ start:{t:'Start',col:'To Do',ty:'tracker',runs:'once',done:'tracker.status_after("To Do")',sa:[['not started','tracker.move("In Progress") · ▶ build-ticket in Claude Code']]},
+ opened:{t:'PR opened',col:'In Progress',ty:'change',runs:'each',done:'change.ready  (exists, not a draft, CI green)',sa:[['no change yet','▶ build-ticket in Claude Code'],['draft','open(change)'],['CI failing','open(checks) · ▶ fix-ci in Claude Code']]},
+ merged:{t:'Review & merge',col:'Code Review',ty:'change',runs:'each',done:'change.merged',sa:[['behind base','code.update_branch'],['conflict','▶ resolve-conflict in Claude Code'],['address feedback','▶ address-review-feedback in Claude Code'],['reply drafted','code.comment (confirm)'],['approved, checks green','code.merge (confirm)']]},
+ dev:{t:'Deploy to dev',col:'Code Review',ty:'deploy',runs:'once',done:'env("dev").contains(all changes)',sa:[['deploying','open(run)'],['failed','open(run) · ▶ diagnose-deploy-failure'],['partly in dev','show which changes are missing']]},
+ val:{t:'Validated in dev',col:'Code Review',ty:'attest',runs:'once',done:'attested("validated_dev", pin: env("dev").commits)',sa:[['open','tick (confirm)'],['stale','tick again']]},
+ stage:{t:'Promote to stage',col:'E2E Testing',ty:'deploy',runs:'once',done:'env("stage").contains(all changes)',sa:[['waiting (manual)','open(promote link) · copy(commit)'],['failed','open(run) · ▶ diagnose-deploy-failure']]},
+ tested:{t:'Tested on stage',col:'E2E Testing',ty:'attest',runs:'once',done:'attested("tested_stage", pin: env("stage").commits)',sa:[['open','tick (confirm)']]},
+ pmnote:{t:'Note to PM',col:'Ready for Demo',ty:'prompt',runs:'once',done:'session.checkpoint("pm_note") && posted',sa:[['open','▶ draft-pm-note in Claude Code'],['drafted','copy(draft)']]},
+ pm:{t:'PM approved',col:'Ready for Demo',ty:'tracker',runs:'once',done:'tracker.reply_from("pm").approves || attested("pm_ok")',sa:[['with PM','▶ draft-pm-nudge'],['PM feedback','▶ address-pm-feedback in Claude Code']]},
+ prod:{t:'Released to prod',col:'Pending Deployment',ty:'deploy',runs:'once',done:'env("prod").contains(all changes)',sa:[['waiting release','none: your release process']]},
+ done:{t:'Done',col:'Done',ty:'tracker',runs:'once',done:'tracker.status_in(["Done","Released"])',sa:[['—','read-only']]}
+};
+let esel='merged';
+function yamlFor(id,b){
+  return `<span class="k">${b.col.toLowerCase().replace(/ /g,'_')}</span>:   <span class="c"># Jira column, read-only</span>
+  <span class="k">flow</span>:
+    - <span class="k">id</span>: ${id}
+      <span class="k">type</span>: ${b.ty}
+      <span class="k">runs</span>: ${b.runs==='each'?'each_change   <span class="c"># parallel, joins below</span>':'once'}
+      <span class="k">after</span>: <span class="s">previous level</span>
+      <span class="k">done_when</span>: <span class="s">${b.done}</span>
+      <span class="k">actions</span>:
+${b.sa.map(([s,a])=>`        <span class="k">${s.replace(/[^a-z ]/gi,'').trim().replace(/ +/g,'_')||'any'}</span>: <span class="s">${a}</span>`).join('\n')}`;
+}
+function renderEditor(){
+  document.getElementById('e-board').innerHTML=`<div class="gwrap" style="padding:8px 0">${graph(null,esel)}</div>`;
+  document.querySelectorAll('#e-board [data-b]').forEach(e=>e.onclick=()=>{esel=e.dataset.b;renderEditor()});
+  document.querySelectorAll('#e-board [data-g]').forEach(e=>e.onclick=()=>{esel=e.dataset.g;renderEditor()});
+  const side=document.getElementById('side');
+  if(/^g\d$/.test(esel)){
+    const i=+esel.slice(1);
+    side.innerHTML=`<div class="muted" style="font-size:11px;letter-spacing:.6px;text-transform:uppercase">Gate</div><h3>${JIRA[i]} → ${JIRA[i+1]}</h3>
+     <div class="fld"><label>Opens when</label><div class="inp code">every block in "${TPL[i].n}" is done</div><div class="hint">Fixed rule: not configurable.</div></div>
+     <div class="fld"><label>On move (your click, confirmed)</label><div class="inp code">tracker.move("${JIRA[i+1]}")</div><div class="inp code" style="margin-top:4px">▶ first prompt of "${TPL[i+1].n}" into Claude Code</div><div class="hint">+ add action: code.merge_all</div></div>`;
+    return;
+  }
+  const b=B[esel];
+  side.innerHTML=`<div class="muted" style="font-size:11px;letter-spacing:.6px;text-transform:uppercase">Block · ${b.col}</div><h3>${b.t}</h3>
+   <div class="fld"><label>Type</label><span class="seg">${['change','deploy','attest','tracker','prompt'].map(x=>`<span class="${x===b.ty?'on':''}">${x}</span>`).join('')}</span></div>
+   <div class="fld"><label>Runs</label><span class="seg"><span class="${b.runs==='each'?'on':''}">each change (parallel)</span><span class="${b.runs==='once'?'on':''}">once</span></span><div class="hint">Starts when every block above it is done.</div></div>
+   <div class="fld"><label>Done when (built-in check)</label><div class="inp code">${b.done}</div></div>
+   <div class="fld"><label>Action set per state</label><table class="sa">${b.sa.map(([s,a])=>`<tr><td>${s}</td><td><code>${a}</code></td></tr>`).join('')}</table>
+     <div class="hint">Outward actions ask first: a popover on the graph, or the permission prompt in Claude Code.</div></div>
+   <div class="fld"><label>pipeline.yaml</label><div class="yaml">${yamlFor(esel,b)}</div></div>`;
+}
+
+/* ---------- init ---------- */
+renderFilters(); renderTickets(); renderEditor();
+const [hs,hk]=location.hash.slice(1).split('/');
+if(hk&&byKey(hk)) current=hk;
+renderCockpit();
+if(['tickets','cockpit','editor','concepts'].includes(hs)) setScreen(hs);
+</script>
+</body>
+</html>
