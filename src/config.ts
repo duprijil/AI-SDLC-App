@@ -1,54 +1,89 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
 
+import { SecretText } from "@/core/models/secret_text";
+
 const CONFIG_FILE_NAME = ".env.config";
+const SECRETS_FILE_NAME = ".env.secrets";
 const RENDERER_URL_VARIABLE = "ELECTRON_RENDERER_URL";
 const HOME_PREFIX = "~/";
 
 export class ProjectConfigError extends Error {
   override readonly name: string = "ProjectConfigError";
+  readonly problems: readonly string[];
+
+  constructor(problems: readonly string[]) {
+    super(problems.join("\n"));
+    this.problems = problems;
+  }
 }
 
 export interface ProjectConfig {
   readonly projectName: string;
   readonly envName: string;
+  readonly activeProject: string;
+  readonly projectsRoot: string;
+  readonly appDataRoot: string;
   readonly agentCommand: string;
   readonly agentWorkspaceRoot: string;
   readonly agentSettingsRoot: string;
-  readonly spikeTicketKey: string;
   readonly windowWidth: number;
   readonly windowHeight: number;
   readonly rendererDevUrl: string | null;
 }
 
-type ConfigEntries = Readonly<Partial<Record<string, string>>>;
-
-function readConfigEntries(): ConfigEntries {
-  const configFilePath = resolve(process.cwd(), CONFIG_FILE_NAME);
-  return parseEnv(readFileSync(configFilePath, "utf8"));
+export interface ProjectSecrets {
+  readonly jiraEmail: SecretText;
+  readonly jiraApiToken: SecretText;
 }
 
-function requireText(entries: ConfigEntries, key: string): string {
-  const text = entries[key];
-  if (text === undefined || text === "") {
-    throw new ProjectConfigError(`Missing ${key} in ${CONFIG_FILE_NAME}`);
+type EnvEntries = Readonly<Partial<Record<string, string>>>;
+
+class EnvFileReader {
+  readonly #fileName: string;
+  readonly #entries: EnvEntries;
+  readonly #problems: string[] = [];
+
+  constructor(fileName: string) {
+    this.#fileName = fileName;
+    const filePath = resolve(process.cwd(), fileName);
+    if (!existsSync(filePath)) {
+      this.#problems.push(`${fileName}: file is missing`);
+      this.#entries = {};
+      return;
+    }
+    this.#entries = parseEnv(readFileSync(filePath, "utf8"));
   }
-  return text;
-}
 
-function requirePositiveInteger(entries: ConfigEntries, key: string): number {
-  const number = Number(requireText(entries, key));
-  if (!Number.isInteger(number) || number <= 0) {
-    throw new ProjectConfigError(`${key} in ${CONFIG_FILE_NAME} must be a positive integer`);
+  text(key: string): string {
+    const text = this.#entries[key];
+    if (text === undefined || text === "") {
+      this.#problems.push(`${this.#fileName}: ${key} is missing`);
+      return "";
+    }
+    return text;
   }
-  return number;
-}
 
-function requirePath(entries: ConfigEntries, key: string): string {
-  const path = requireText(entries, key);
-  return path.startsWith(HOME_PREFIX) ? join(homedir(), path.slice(HOME_PREFIX.length)) : resolve(path);
+  positiveInteger(key: string): number {
+    const number = Number(this.text(key));
+    if (!Number.isInteger(number) || number <= 0) {
+      this.#problems.push(`${this.#fileName}: ${key} must be a positive integer`);
+    }
+    return number;
+  }
+
+  path(key: string): string {
+    const path = this.text(key);
+    return path.startsWith(HOME_PREFIX) ? join(homedir(), path.slice(HOME_PREFIX.length)) : resolve(path);
+  }
+
+  failIfInvalid(): void {
+    if (this.#problems.length > 0) {
+      throw new ProjectConfigError(this.#problems);
+    }
+  }
 }
 
 function readRendererDevUrl(): string | null {
@@ -57,16 +92,30 @@ function readRendererDevUrl(): string | null {
 }
 
 export function loadProjectConfig(): ProjectConfig {
-  const entries = readConfigEntries();
-  return Object.freeze({
-    projectName: requireText(entries, "PROJECT_NAME"),
-    envName: requireText(entries, "ENV_NAME"),
-    agentCommand: requireText(entries, "AGENT_COMMAND"),
-    agentWorkspaceRoot: requirePath(entries, "AGENT_WORKSPACE_ROOT"),
-    agentSettingsRoot: requirePath(entries, "AGENT_SETTINGS_ROOT"),
-    spikeTicketKey: requireText(entries, "SPIKE_TICKET_KEY"),
-    windowWidth: requirePositiveInteger(entries, "WINDOW_WIDTH"),
-    windowHeight: requirePositiveInteger(entries, "WINDOW_HEIGHT"),
+  const reader = new EnvFileReader(CONFIG_FILE_NAME);
+  const config: ProjectConfig = Object.freeze({
+    projectName: reader.text("PROJECT_NAME"),
+    envName: reader.text("ENV_NAME"),
+    activeProject: reader.text("ACTIVE_PROJECT"),
+    projectsRoot: reader.path("PROJECTS_ROOT"),
+    appDataRoot: reader.path("APP_DATA_ROOT"),
+    agentCommand: reader.text("AGENT_COMMAND"),
+    agentWorkspaceRoot: reader.path("AGENT_WORKSPACE_ROOT"),
+    agentSettingsRoot: reader.path("AGENT_SETTINGS_ROOT"),
+    windowWidth: reader.positiveInteger("WINDOW_WIDTH"),
+    windowHeight: reader.positiveInteger("WINDOW_HEIGHT"),
     rendererDevUrl: readRendererDevUrl(),
   });
+  reader.failIfInvalid();
+  return config;
+}
+
+export function loadProjectSecrets(): ProjectSecrets {
+  const reader = new EnvFileReader(SECRETS_FILE_NAME);
+  const secrets: ProjectSecrets = Object.freeze({
+    jiraEmail: new SecretText(reader.text("JIRA_EMAIL")),
+    jiraApiToken: new SecretText(reader.text("JIRA_API_TOKEN")),
+  });
+  reader.failIfInvalid();
+  return secrets;
 }

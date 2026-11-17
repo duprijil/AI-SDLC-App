@@ -8,6 +8,12 @@ Install Node.js 22.22.1 (see `.nvmrc`) and Claude Code (`claude` on your `PATH`)
 
 ```bash
 make install-dev
+make setup-env
+```
+
+Fill `JIRA_EMAIL` and `JIRA_API_TOKEN` in `.env.secrets`. Create `projects/<your-project>/project.yaml` and `pipeline.yaml` (schema in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §4 and [docs/domains/pipeline.md](docs/domains/pipeline.md)), and set `ACTIVE_PROJECT` in `.env.config`. The `projects/` folder is gitignored. Then:
+
+```bash
 make run-desktop
 make check
 ```

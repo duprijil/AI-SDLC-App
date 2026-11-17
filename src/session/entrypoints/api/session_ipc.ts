@@ -4,13 +4,12 @@ import { readTerminalSize, readText } from "@/session/entrypoints/api/ipc_payloa
 import type { SessionContainer } from "@/session/entrypoints/container";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import type { HookEndpoint } from "@/session/models/hook_endpoint";
-import { SESSION_CHANNEL } from "@/session/models/session_bridge";
+import { SESSION_CHANNEL, type SessionExitDTO, type SessionOutputDTO } from "@/session/models/session_bridge";
 import { TerminalSize } from "@/session/models/terminal_size";
 
 export interface SessionIpcOptions {
   readonly container: SessionContainer;
   readonly hookEndpoint: HookEndpoint;
-  readonly ticketKey: string;
 }
 
 const sendToRenderer = (webContents: WebContents, channel: string, payload: unknown): void => {
@@ -26,18 +25,21 @@ export function publishSessionStatus(webContents: WebContents, session: AgentSes
 export function registerSessionIpc(options: SessionIpcOptions): void {
   const logger = options.container.logger("session.session_ipc");
 
-  ipcMain.handle(SESSION_CHANNEL.start, (event, sizePayload: unknown): AgentSessionDTO => {
+  ipcMain.handle(SESSION_CHANNEL.start, (event, ticketKeyPayload: unknown, sizePayload: unknown): AgentSessionDTO => {
+    const ticketKey = readText(ticketKeyPayload, "ticketKey");
     const session = options.container.startAgentSession().execute({
-      ticketKey: options.ticketKey,
+      ticketKey,
       hookEndpoint: options.hookEndpoint,
       size: TerminalSize.create(readTerminalSize(sizePayload)),
       listener: {
         onOutput: (chunk) => {
-          sendToRenderer(event.sender, SESSION_CHANNEL.output, chunk);
+          const output: SessionOutputDTO = { ticketKey, chunk };
+          sendToRenderer(event.sender, SESSION_CHANNEL.output, output);
         },
         onExit: (exitCode) => {
-          logger.info("Agent session exited", { exitCode });
-          sendToRenderer(event.sender, SESSION_CHANNEL.exit, exitCode);
+          logger.info("Agent session exited", { ticketKey, exitCode });
+          const exit: SessionExitDTO = { ticketKey, exitCode };
+          sendToRenderer(event.sender, SESSION_CHANNEL.exit, exit);
         },
       },
     });

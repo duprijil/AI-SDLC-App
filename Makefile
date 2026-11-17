@@ -61,6 +61,13 @@ install-dev: check-toolchain
 	@ $(INSTALL_DEV)
 	$(call print_done,Project and dev dependencies installed)
 
+.PHONY: setup-env
+setup-env:
+	$(call print_progress,Creating .env.secrets from the example)
+	@ cp -n .env.secrets.example .env.secrets || true
+	@ chmod 600 .env.secrets
+	$(call print_warning,Fill the empty values in .env.secrets)
+
 .PHONY: format
 format:
 	$(call print_progress,Formatting code)

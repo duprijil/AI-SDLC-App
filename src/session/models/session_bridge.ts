@@ -15,12 +15,22 @@ export const SESSION_CHANNEL = Object.freeze({
 
 export type Unsubscribe = () => void;
 
+export interface SessionOutputDTO {
+  readonly ticketKey: string;
+  readonly chunk: string;
+}
+
+export interface SessionExitDTO {
+  readonly ticketKey: string;
+  readonly exitCode: number;
+}
+
 export interface SessionBridge {
-  start(size: TerminalSizeDTO): Promise<AgentSessionDTO>;
+  start(ticketKey: string, size: TerminalSizeDTO): Promise<AgentSessionDTO>;
   sendInput(sessionId: string, keystrokes: string): void;
   resize(sessionId: string, size: TerminalSizeDTO): void;
   sendPrompt(sessionId: string, promptText: string): Promise<void>;
-  onOutput(listener: (chunk: string) => void): Unsubscribe;
+  onOutput(listener: (output: SessionOutputDTO) => void): Unsubscribe;
   onStatus(listener: (session: AgentSessionDTO) => void): Unsubscribe;
-  onExit(listener: (exitCode: number) => void): Unsubscribe;
+  onExit(listener: (exit: SessionExitDTO) => void): Unsubscribe;
 }

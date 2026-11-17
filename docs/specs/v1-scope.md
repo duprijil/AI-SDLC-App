@@ -31,7 +31,7 @@ A desktop app where **one developer** runs their own sprint tickets from start t
 | Area | In scope |
 |---|---|
 | App | A desktop app with a single user and local credentials, built on **Electron** (decided in M0). |
-| Config | `AI-SDLC-App/projects/<name>/` in this repo: `project.yaml`, `pipeline.yaml`, `harness/claude-code.yaml`, `prompts/*.md`, `guardrails.md`. One project open at a time. |
+| Config | `AI-SDLC-App/projects/<name>/` in this repo: `project.yaml`, `pipeline.yaml`, `harness/claude-code.yaml`, `prompts/*.md`, `guardrails.md`. One project open at a time, chosen with `ACTIVE_PROJECT`. All of `projects/` is gitignored. |
 | Tracker | **Jira Cloud**: board columns (read-only), my sprint tickets, status, comments, transitions. |
 | Code host | **GitHub**: PRs linked by the ticket key, reviews and threads from my point of view, CI state, merge state, merge, update branch, comment and resolve a thread. |
 | Delivery | **GitHub Actions** (deploy runs and the commit they deployed). **kubectl** runtime check (deployed image → commit, rollout, pod errors). **Link-only** manual promotions (Spinnaker). |
@@ -104,9 +104,7 @@ AI-SDLC-App/
 │  ├─ session/       AgentHarness port, claude_code adapter, PTY, workspaces, sdlc MCP server, hook endpoint
 │  └─ cockpit/       combined: refresh engine, block states, gates, attention, actions;
 │                    My tickets + Cockpit screens; desktop bootstrap
-├─ projects/
-│  ├─ example/       a minimal working example
-│  └─ deck-builder/  the first real project
+├─ projects/         gitignored: one folder per project, such as deck-builder/
 ├─ docs/
 ├─ AGENTS.md · CLAUDE.md · Makefile · .env.config · .env.secrets.example
 └─ the shell's and stack's files, chosen in M0
@@ -125,7 +123,7 @@ name: Deck Builder
 tracker:
   type: jira
   site: https://<org>.atlassian.net
-  board: DIG1                       # columns are read from this board
+  board_id: 42                      # numeric Jira board id; columns are read from this board
   scope: "assignee = currentUser() AND sprint in openSprints()"
   hide_statuses: [Won't Do, Duplicate, Cancelled, Removed]
   roles: { pm: ["<account-id>"] }   # used by tracker.reply_from("pm")
@@ -341,7 +339,7 @@ refresh(ticket):
 | `drafts` | from `sdlc.draft`: ticket, kind, target, text, state |
 | `cache` | ETags, per-change review snapshots, last block states (so My tickets draws right away when the app opens) |
 
-Config never goes into SQLite. Secrets go in the **OS keychain** (Jira API token). GitHub reuses `gh auth token`. Kubernetes uses your `kubectl`/`gcloud` login.
+Config never goes into SQLite. Secrets go in the **OS keychain** (Jira API token); until then (from M1), `JIRA_EMAIL` and `JIRA_API_TOKEN` live in the gitignored `.env.secrets`. GitHub reuses `gh auth token`. Kubernetes uses your `kubectl`/`gcloud` login.
 
 ---
 
@@ -373,7 +371,7 @@ Transitions: card → Cockpit (shared graph and title, the list slides in, the t
 | # | Milestone | Delivers | Exit check |
 |---|---|---|---|
 | **M0** | **Scaffold + embed spike** (GH-1) | Electron was chosen without a Tauri prototype. `/engineer:new-project` scaffolds the repo (tools, Makefile, CI, Stack section). The spike embeds `claude` in xterm.js with a PTY, resize, colours, bracketed paste and hooks posting to the core. | Claude Code is fully usable in the app; `make check` passes |
-| M1 | Skeleton + Jira | Config loader and validation · Jira connector · board columns · My tickets with graphs from the template (no checks yet) · SQLite cache | My sprint shows with the right columns |
+| M1 | Skeleton + Jira (GH-3, [spec](GH-3-cockpit-show-sprint-tickets.md)) | Config loader and validation · Jira connector · board columns · My tickets with graphs from the template (no checks yet) · SQLite cache · Cockpit with one session per ticket | My sprint shows with the right columns |
 | M2 | Changes + engine | GitHub connector · `change` blocks · refresh engine with early stop + animation · popovers · merge, update branch, comment | The Code Review column is fully correct for real tickets |
 | M3 | Delivery | GitHub Actions + kubectl runtime · ancestry and patch-id · `deploy` blocks · `attest` with pins · gates and status moves (forward and back) | "In dev / in stage" is correct across the Deck Builder repos |
 | M4 | Sessions | Workspaces and worktrees · Claude Code PTY · harness (inject, hooks, permissions) · `sdlc` MCP server · `prompt` blocks · Cockpit terminal · attention from hooks | A real ticket runs from build to merge through the Cockpit |

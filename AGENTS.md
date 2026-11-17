@@ -22,6 +22,7 @@ Harness: engineer
 ## Commands
 
 - `make install-dev`: install dependencies, download Electron and rebuild node-pty for it
+- `make setup-env`: create `.env.secrets` from `.env.secrets.example`, then fill in `JIRA_EMAIL` and `JIRA_API_TOKEN`
 - `make run-desktop`: start the app in development mode
 - `make build`: build the main, preload and renderer bundles into `out/`
 - `make format`: format and auto-fix
@@ -40,9 +41,9 @@ The full list is proposed in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §
 |---|---|---|---|
 | core | shared kernel | Model convention, logging, business-free UI components | [docs/domains/core.md](docs/domains/core.md) |
 | session | normal | One Claude Code session per ticket: workspace, PTY, hooks, prompts | [docs/domains/session.md](docs/domains/session.md) |
-| cockpit | combined | Desktop bootstrap, renderer screens; later the refresh engine, block states, gates | [docs/domains/cockpit.md](docs/domains/cockpit.md) |
-| pipeline | normal | Project and pipeline config: load, validate, edit | planned |
-| ticket | normal | Tracker tickets, board columns, status moves | planned |
+| pipeline | normal | Project and pipeline config: load and validate (editing in M5) | [docs/domains/pipeline.md](docs/domains/pipeline.md) |
+| ticket | normal | Tracker tickets and board columns from Jira, with a SQLite cache (status moves in M3) | [docs/domains/ticket.md](docs/domains/ticket.md) |
+| cockpit | combined | Desktop bootstrap, sprint board, My tickets and Cockpit screens; later the refresh engine, block states, gates | [docs/domains/cockpit.md](docs/domains/cockpit.md) |
 | change | normal | PRs linked to a ticket: review state, merge, update, comment | planned |
 | delivery | normal | Deploy runs, runtime state, "environment contains change" | planned |
 | attestation | normal | Human ticks pinned to deployed commits | planned |
@@ -64,7 +65,8 @@ The full list is proposed in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §
   - The main process starts at `src/main.ts`, the preload at `src/preload.ts`, the renderer at `src/renderer.ts` + `src/index.html`. All four only delegate to `cockpit/entrypoints/ui/`.
   - The renderer never reaches Node, Electron or node-pty. It talks to the main process only through the bridge contract in `session/models/session_bridge.ts`, exposed by the preload. `make check-architecture` enforces this.
   - The window runs with `contextIsolation` and `sandbox` on, and `nodeIntegration` off.
-- A user's own secrets (tokens) go in the OS keychain through an adapter, never in env files.
+- Projects live in `projects/<name>/` (`project.yaml`, `pipeline.yaml`). `ACTIVE_PROJECT` in `.env.config` picks one. All of `projects/` is gitignored, because project files name real company systems. The schema is in `docs/specs/v1-scope.md` §4.
+- Jira credentials live in `.env.secrets` for now (the engineer's choice for M1). The v1 target is the OS keychain through an adapter.
 - Never write comments or doc comments. Only tool directives with a specific code are allowed.
 - Type everything. `make check-types` runs the strictest checking available.
 - Never create, edit or run tests. The engineer does the testing. End each task with a short list of what to test.
@@ -87,5 +89,6 @@ The full list is proposed in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §
 ## Known pitfalls
 
 - TypeScript 7 isn't supported by typescript-eslint yet. Stay on 6.0 until it is.
+- `@types/node` is pinned to 22 to match `.nvmrc`, but the main process runs on Electron's Node 24.22. APIs used only in the main process, such as `node:sqlite`, exist there even if Node 22 marks them experimental.
 - Electron 45 doesn't download its binary during `npm install`. The `postinstall` script runs `install-electron`, then rebuilds node-pty against Electron's ABI. If the app fails with a `NODE_MODULE_VERSION` error, run `npx electron-rebuild --force --only node-pty`.
 - The dev server's React preamble is an inline script, so `index.html` allows `'unsafe-inline'` scripts. Tighten the CSP before packaging.

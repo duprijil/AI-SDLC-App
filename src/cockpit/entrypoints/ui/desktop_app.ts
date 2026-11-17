@@ -1,15 +1,26 @@
 import { join } from "node:path";
 
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 
+import { registerCockpitIpc } from "@/cockpit/entrypoints/api/cockpit_ipc";
 import { CockpitContainer } from "@/cockpit/entrypoints/container";
 import type { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
+import { CockpitConfigurationError } from "@/cockpit/models/errors";
 import { startHookServer } from "@/session/entrypoints/api/hook_server";
 import { publishSessionStatus, registerSessionIpc } from "@/session/entrypoints/api/session_ipc";
 
 const WINDOW_BACKGROUND = "#0a0e16";
 const PRELOAD_BUNDLE = join(__dirname, "../preload/index.js");
 const RENDERER_PAGE = join(__dirname, "../renderer/index.html");
+const FAILURE_EXIT_CODE = 1;
+
+function showConfigurationProblems(problems: readonly string[]): void {
+  dialog.showErrorBox(
+    "Ticket Cockpit can't start",
+    ["Fix these problems, then start the app again:", "", ...problems.map((problem) => `• ${problem}`)].join("\n"),
+  );
+  app.exit(FAILURE_EXIT_CODE);
+}
 
 function createWindow(settings: DesktopWindowSettings): BrowserWindow {
   return new BrowserWindow({
@@ -40,11 +51,8 @@ async function openCockpit(container: CockpitContainer): Promise<void> {
   const hookServer = await startHookServer(container.session(), (session) => {
     publishSessionStatus(window.webContents, session);
   });
-  registerSessionIpc({
-    container: container.session(),
-    hookEndpoint: hookServer.endpoint,
-    ticketKey: container.spikeTicketKey(),
-  });
+  registerSessionIpc({ container: container.session(), hookEndpoint: hookServer.endpoint });
+  registerCockpitIpc({ container, onConfigurationProblems: showConfigurationProblems });
   app.on("before-quit", () => {
     container.session().stopAgentSessions().execute();
     hookServer.close();
@@ -52,17 +60,34 @@ async function openCockpit(container: CockpitContainer): Promise<void> {
   await loadRenderer(window, settings);
 }
 
+function buildContainer(): CockpitContainer | null {
+  try {
+    return new CockpitContainer();
+  } catch (error) {
+    if (error instanceof CockpitConfigurationError) {
+      showConfigurationProblems(error.problems);
+      return null;
+    }
+    throw error;
+  }
+}
+
 export function startDesktopApp(): void {
-  const container = new CockpitContainer();
-  const logger = container.logger("cockpit.desktop_app");
   app.on("window-all-closed", () => {
     app.quit();
   });
-  app
-    .whenReady()
-    .then(() => openCockpit(container))
-    .catch((error: unknown) => {
-      logger.error("Ticket Cockpit failed to start", { reason: error instanceof Error ? error.message : "unknown" });
-      app.exit(1);
-    });
+  void app.whenReady().then(async () => {
+    const container = buildContainer();
+    if (container === null) {
+      return;
+    }
+    try {
+      await openCockpit(container);
+    } catch (error) {
+      container.logger("cockpit.desktop_app").error("Ticket Cockpit failed to start", {
+        reason: error instanceof Error ? error.message : "unknown",
+      });
+      app.exit(FAILURE_EXIT_CODE);
+    }
+  });
 }

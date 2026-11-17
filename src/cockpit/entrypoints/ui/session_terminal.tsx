@@ -4,8 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import { type ReactElement, useEffect, useRef } from "react";
 
-import { sessionBridge } from "@/cockpit/entrypoints/ui/session_bridge_window";
-import type { AgentSessionDTO } from "@/session/models/agent_session";
+import { sessionBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
 
 const TERMINAL_FONT_FAMILY = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const TERMINAL_FONT_SIZE = 13;
@@ -18,16 +17,10 @@ const TERMINAL_THEME: ITheme = {
 };
 
 export interface SessionTerminalProps {
-  readonly onSessionChanged: (session: AgentSessionDTO) => void;
-  readonly onSessionExited: (exitCode: number) => void;
+  readonly ticketKey: string;
 }
 
-interface TerminalListeners {
-  readonly onSessionChanged: (session: AgentSessionDTO) => void;
-  readonly onSessionExited: (exitCode: number) => void;
-}
-
-function attachTerminal(host: HTMLDivElement, listeners: TerminalListeners): () => void {
+function attachTerminal(host: HTMLDivElement, ticketKey: string): () => void {
   const bridge = sessionBridge();
   const terminal = new Terminal({
     fontFamily: TERMINAL_FONT_FAMILY,
@@ -44,11 +37,16 @@ function attachTerminal(host: HTMLDivElement, listeners: TerminalListeners): () 
   let sessionId: string | null = null;
   let isDetached = false;
   const unsubscribers = [
-    bridge.onOutput((chunk) => {
-      terminal.write(chunk);
+    bridge.onOutput((output) => {
+      if (output.ticketKey === ticketKey) {
+        terminal.write(output.chunk);
+      }
     }),
-    bridge.onStatus(listeners.onSessionChanged),
-    bridge.onExit(listeners.onSessionExited),
+    bridge.onExit((exit) => {
+      if (exit.ticketKey === ticketKey) {
+        terminal.write(`\r\n[Claude Code exited with code ${String(exit.exitCode)}]\r\n`);
+      }
+    }),
   ];
   const keystrokeSubscription = terminal.onData((keystrokes) => {
     if (sessionId !== null) {
@@ -64,14 +62,12 @@ function attachTerminal(host: HTMLDivElement, listeners: TerminalListeners): () 
   resizeObserver.observe(host);
 
   bridge
-    .start({ columns: terminal.cols, rows: terminal.rows })
+    .start(ticketKey, { columns: terminal.cols, rows: terminal.rows })
     .then((session) => {
-      if (isDetached) {
-        return;
+      if (!isDetached) {
+        sessionId = session.sessionId;
+        terminal.focus();
       }
-      sessionId = session.sessionId;
-      listeners.onSessionChanged(session);
-      terminal.focus();
     })
     .catch((error: unknown) => {
       terminal.write(`\r\nCould not start the session: ${error instanceof Error ? error.message : "unknown"}\r\n`);
@@ -88,7 +84,7 @@ function attachTerminal(host: HTMLDivElement, listeners: TerminalListeners): () 
   };
 }
 
-export function SessionTerminal({ onSessionChanged, onSessionExited }: SessionTerminalProps): ReactElement {
+export function SessionTerminal({ ticketKey }: SessionTerminalProps): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -96,8 +92,8 @@ export function SessionTerminal({ onSessionChanged, onSessionExited }: SessionTe
     if (host === null) {
       return undefined;
     }
-    return attachTerminal(host, { onSessionChanged, onSessionExited });
-  }, [onSessionChanged, onSessionExited]);
+    return attachTerminal(host, ticketKey);
+  }, [ticketKey]);
 
   return <div className="session-terminal" ref={hostRef} />;
 }

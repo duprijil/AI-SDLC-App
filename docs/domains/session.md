@@ -12,11 +12,11 @@ Normal domain. Runs exactly one AI agent session per ticket: the real tool (Clau
 | Hook event | A tool lifecycle callback (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SessionEnd`) posted to the app |
 | Hook endpoint | The app's loopback URL and per-run token that the hooks post to |
 | Agent prompt | Text the app types into the session as one bracketed paste, followed by Enter |
-| Session bridge | The typed contract the renderer uses to talk to the session over IPC |
+| Session bridge | The typed contract the renderer uses to talk to the session over IPC. Output and exit events carry the ticket key, so each terminal shows only its own session |
 
 ## Responsibilities
 
-- Start the agent in the ticket's workspace, or re-attach to the running one, replaying its recent output.
+- Start the agent in the ticket's workspace, or re-attach to the running one, replaying its recent output. Several tickets can have running sessions at once.
 - Pass keystrokes and terminal resizes through to the PTY untouched.
 - Type prompts as bracketed pastes, so multi-line prompts arrive as one prompt.
 - Write per-session hook settings (`--settings <file>`, mode 600) that post every hook event to the hook endpoint.
