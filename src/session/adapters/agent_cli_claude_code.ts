@@ -1,5 +1,12 @@
-import type { AgentCliPort } from "@/session/adapters/agent_cli_port";
+import type { AgentCliPort, AgentLaunchFiles } from "@/session/adapters/agent_cli_port";
 import type { AgentLaunchCommand } from "@/session/models/agent_launch_command";
+
+const sessionFiles = (files: AgentLaunchFiles): readonly string[] => [
+  "--settings",
+  files.settingsFilePath,
+  "--mcp-config",
+  files.mcpConfigFilePath,
+];
 
 export class AgentCliClaudeCode implements AgentCliPort {
   readonly #agentCommand: string;
@@ -8,17 +15,11 @@ export class AgentCliClaudeCode implements AgentCliPort {
     this.#agentCommand = agentCommand;
   }
 
-  launchCommand(sessionId: string, settingsFilePath: string): AgentLaunchCommand {
-    return {
-      command: this.#agentCommand,
-      commandArguments: ["--session-id", sessionId, "--settings", settingsFilePath],
-    };
+  launchCommand(sessionId: string, files: AgentLaunchFiles): AgentLaunchCommand {
+    return { command: this.#agentCommand, commandArguments: ["--session-id", sessionId, ...sessionFiles(files)] };
   }
 
-  resumeCommand(sessionId: string, settingsFilePath: string): AgentLaunchCommand {
-    return {
-      command: this.#agentCommand,
-      commandArguments: ["--resume", sessionId, "--settings", settingsFilePath],
-    };
+  resumeCommand(sessionId: string, files: AgentLaunchFiles): AgentLaunchCommand {
+    return { command: this.#agentCommand, commandArguments: ["--resume", sessionId, ...sessionFiles(files)] };
   }
 }

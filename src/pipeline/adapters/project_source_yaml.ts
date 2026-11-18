@@ -45,6 +45,8 @@ const sessionPromptsOf = (actions: readonly unknown[]): readonly string[] =>
     return parsed.success ? [parsed.data.session] : [];
   });
 
+const CHECKPOINT_PATTERN = /^session\.checkpoint\(\s*([a-z][a-z0-9_]*)\s*\)$/;
+
 const PIN_PATTERN = /^env\("([\w-]+)"\)\.commits$/;
 
 const environmentSchema = z.union([
@@ -148,6 +150,7 @@ const toBlockTemplate = (block: BlockEntry): FlowLevelDTO["blocks"][number] => (
       .filter(([, prompts]) => prompts.length > 0),
   ),
   promptFile: block.prompt ?? null,
+  checkpointKind: block.type === "prompt" ? (CHECKPOINT_PATTERN.exec(block.done_when ?? "")?.[1] ?? null) : null,
 });
 
 const expandHome = (path: string): string =>

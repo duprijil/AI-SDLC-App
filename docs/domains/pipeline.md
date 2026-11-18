@@ -39,7 +39,7 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 - A repo with a `github_actions` env has `path`. `commit` is `run.head_sha`; the other sources are refused as not supported yet.
 - `same_as` points at an env of the same repo that has its own settings.
 - `actions` keys with prompts are states the block type has. Prompt names are `prompts/<file>.md`, never a path outside the project.
-- A `prompt` block has `prompt:`, and its `done_when` (if any) is `session.checkpoint(<kind>)`.
+- A `prompt` block has `prompt:`, and its `done_when` (if any) is `session.checkpoint(<kind>)` with a snake_case kind, which `sdlc.checkpoint(kind)` ticks.
 - Every referenced template exists (as a file or a default) and uses only known placeholders; `{{change.*}}` only on change blocks.
 - Default templates are written only when missing, never over a file.
 - All of `projects/` is gitignored, because project files name real company systems. Nothing under it is committed.

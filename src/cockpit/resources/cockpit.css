@@ -991,3 +991,8 @@ button.blk:hover {
   flex-direction: column;
   gap: 6px;
 }
+
+.draft-hint {
+  color: var(--blue-tx, #9cc0ff);
+  font-size: 11.5px;
+}

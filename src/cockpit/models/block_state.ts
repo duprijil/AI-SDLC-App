@@ -6,6 +6,7 @@ import type { TicketChange } from "@/change/models/ticket_changes";
 import type { ColumnMoveDTO } from "@/cockpit/models/column_move";
 import { type DeployLineDTO, DeployView } from "@/cockpit/models/deploy_view";
 import type { BlockTemplateDTO, ChangeCheck } from "@/pipeline/models/pipeline";
+import type { DraftDTO } from "@/session/models/draft";
 
 export type BlockStateKind =
   | "no_change"
@@ -18,6 +19,7 @@ export type BlockStateKind =
   | "behind"
   | "approved"
   | "in_review"
+  | "drafted"
   | "tracker_done"
   | "tracker_open"
   | "deploy_na"
@@ -55,6 +57,7 @@ export interface ThreadViewDTO {
   readonly location: string;
   readonly lastAuthorLogin: string;
   readonly lastCommentBody: string;
+  readonly draftText: string | null;
 }
 
 export interface AttestationViewDTO {
@@ -79,6 +82,7 @@ export interface BlockStateDTO {
   readonly deployLines: readonly DeployLineDTO[];
   readonly attestation: AttestationViewDTO | null;
   readonly promptTemplates: readonly string[];
+  readonly noteDraft: string | null;
 }
 
 interface KindMeta {
@@ -98,6 +102,7 @@ const KIND_META: Readonly<Record<BlockStateKind, KindMeta>> = {
   behind: { tone: "warn", isFinished: false, caption: "behind its base" },
   approved: { tone: "warn", isFinished: false, caption: "approved · merge" },
   in_review: { tone: "wait", isFinished: false, caption: "in review" },
+  drafted: { tone: "warn", isFinished: false, caption: "drafted reply · post it" },
   tracker_done: { tone: "ok", isFinished: true, caption: "done" },
   tracker_open: { tone: "wait", isFinished: false, caption: "waiting" },
   deploy_na: { tone: "ok", isFinished: true, caption: "n/a" },
@@ -129,6 +134,7 @@ const ACTION_STATE_OF: Readonly<Partial<Record<BlockStateKind, string>>> = {
   behind: "behind",
   approved: "approved",
   in_review: "in_review",
+  drafted: "drafted",
   tracker_open: "open",
   tracker_done: "done",
   deploy_na: "n_a",
@@ -156,6 +162,7 @@ const promptTemplatesFor = (template: BlockTemplateDTO, kind: BlockStateKind): r
 
 const NEEDS_YOU_KINDS: readonly BlockStateKind[] = [
   "prompt_open",
+  "drafted",
   "feedback",
   "conflict",
   "behind",
@@ -200,6 +207,7 @@ const toThreadView = (thread: ReviewThread): ThreadViewDTO => {
     location: thread.location(),
     lastAuthorLogin: lastComment?.authorLogin ?? "",
     lastCommentBody: lastComment?.body ?? "",
+    draftText: null,
   };
 };
 
@@ -229,6 +237,7 @@ function blockState(template: BlockTemplateDTO, kind: BlockStateKind, parts: Blo
     deployLines: parts.deployLines ?? [],
     attestation: parts.attestation ?? null,
     promptTemplates: promptTemplatesFor(template, kind),
+    noteDraft: null,
   };
 }
 
@@ -295,6 +304,19 @@ export const BlockState = {
 
   attestWaits(template: BlockTemplateDTO, reason: string): BlockStateDTO {
     return blockState(template, "attest_waits", { title: template.title, caption: reason });
+  },
+
+  withDrafts(block: BlockStateDTO, template: BlockTemplateDTO, drafts: readonly DraftDTO[]): BlockStateDTO {
+    const replyFor = (threadId: string): string | null =>
+      drafts.findLast((draft) => draft.kind === "thread_reply" && draft.target === threadId)?.text ?? null;
+    const note = drafts.findLast((draft) => draft.kind === "note" && draft.target === block.blockId)?.text ?? null;
+    const threads = block.threads.map((thread) => ({ ...thread, draftText: replyFor(thread.threadId) }));
+    const isDrafted = block.kind === "feedback" && threads.some((thread) => thread.draftText !== null);
+    if (!isDrafted) {
+      return { ...block, threads, noteDraft: note };
+    }
+    const drafted = blockState(template, "drafted", { title: block.title, threads });
+    return { ...drafted, change: block.change, noteDraft: note };
   },
 
   forPrompt(template: BlockTemplateDTO, isDone: boolean, note: string | null): BlockStateDTO {

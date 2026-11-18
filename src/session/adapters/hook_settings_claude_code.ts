@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { HookSettingsPort } from "@/session/adapters/hook_settings_port";
+import { AGENT_TOOL_POLICY } from "@/session/models/agent_tool";
 import { HookSettingsWriteError } from "@/session/models/errors";
 import type { HookEndpoint } from "@/session/models/hook_endpoint";
 import { HOOK_EVENT_NAMES, type HookEventName, TOOL_HOOK_EVENT_NAMES } from "@/session/models/hook_event";
@@ -31,7 +32,14 @@ export class HookSettingsClaudeCode implements HookSettingsPort {
 
   write(sessionId: string, hookEndpoint: HookEndpoint): string {
     const settingsFilePath = join(this.#settingsRootPath, `${sessionId}.json`);
-    const settings = { hooks: this.#hooksFor(hookEndpoint) };
+    const settings = {
+      hooks: this.#hooksFor(hookEndpoint),
+      permissions: {
+        allow: AGENT_TOOL_POLICY.allow,
+        ask: AGENT_TOOL_POLICY.ask,
+        deny: AGENT_TOOL_POLICY.deny,
+      },
+    };
     try {
       mkdirSync(this.#settingsRootPath, { recursive: true });
       writeFileSync(settingsFilePath, JSON.stringify(settings, null, 2), { mode: SETTINGS_FILE_MODE });

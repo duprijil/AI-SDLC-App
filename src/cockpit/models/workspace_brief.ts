@@ -56,6 +56,14 @@ const CONVENTIONS: readonly string[] = [
   "- Push the ticket branch (`git push -u origin <branch>`) and open the PR against its base branch.",
   "- Don't merge PRs, and don't move the Jira status. The developer does both from the Ticket Cockpit app.",
   "- You have no Jira access. If something about the ticket is unclear or missing, ask the developer.",
+  "",
+  "## The `sdlc` tools (served by the Ticket Cockpit app)",
+  "",
+  "- `get_context`: the live state of this ticket (PRs, open review threads with their ids, pipeline blocks, deployments, drafts). Call it instead of guessing.",
+  "- `draft`: hand a review reply (`thread_reply`, target = thread id) or a note (`note`, target = prompt block id) to the developer instead of posting it.",
+  "- `checkpoint`: tell the app a pipeline step is done (`kind` from the prompt, with a short summary).",
+  "- `code_comment` and `merge`: post a reply or merge a PR of this ticket. The developer approves each call.",
+  "- Posting with `gh pr comment`, `gh pr review`, `gh pr merge` or `gh api` is blocked. Use the `sdlc` tools.",
 ];
 
 export const WorkspaceBrief = {

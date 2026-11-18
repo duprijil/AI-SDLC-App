@@ -149,9 +149,13 @@ export function useSprintBoard(): SprintBoardState {
     const stopAttention = bridge.onAttention((change) => {
       setBoard((current) => replaceAttention(current, change));
     });
+    const stopCard = bridge.onCard((card) => {
+      setBoard((current) => replaceCard(current, card));
+    });
     return (): void => {
       stopProgress();
       stopAttention();
+      stopCard();
     };
   }, []);
 

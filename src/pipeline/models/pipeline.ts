@@ -19,6 +19,7 @@ export interface BlockTemplateDTO {
   readonly doneWhen: string | null;
   readonly promptActions: Readonly<Record<string, readonly string[]>>;
   readonly promptFile: string | null;
+  readonly checkpointKind: string | null;
 }
 
 export const ACTION_STATES: Readonly<Record<BlockType, readonly string[]>> = Object.freeze({
@@ -140,9 +141,10 @@ function actionProblems(column: PipelineColumnDTO): readonly string[] {
         ? []
         : [
             ...(block.promptFile === null ? [`${blockPath}: a prompt block needs prompt: prompts/<name>.md`] : []),
-            ...(block.doneWhen === null || block.doneWhen.startsWith(CHECKPOINT_CHECK_PREFIX)
+            ...(block.doneWhen === null ||
+            (block.doneWhen.startsWith(CHECKPOINT_CHECK_PREFIX) && block.checkpointKind !== null)
               ? []
-              : [`${blockPath}: a prompt block is done_when: session.checkpoint(<kind>)`]),
+              : [`${blockPath}: a prompt block is done_when: session.checkpoint(<snake_case kind>)`]),
           ];
     return [...stateProblems, ...nameProblems, ...promptBlockProblems];
   });
@@ -209,6 +211,22 @@ export class Pipeline {
         where: `columns.${column.columnKey}.gate`,
       })),
     ]);
+  }
+
+  checkpointBlocks(kind: string): readonly BlockTemplateDTO[] {
+    return this.columns.flatMap((column) =>
+      column.levels.flatMap((level) =>
+        level.blocks.filter((block) => block.blockType === "prompt" && block.checkpointKind === kind),
+      ),
+    );
+  }
+
+  promptBlock(blockId: string): BlockTemplateDTO | null {
+    return (
+      this.columns
+        .flatMap((column) => column.levels.flatMap((level) => level.blocks))
+        .find((block) => block.blockType === "prompt" && block.blockId === blockId) ?? null
+    );
   }
 
   promptsAfterForwardMove(fromColumnKey: string): readonly string[] {

@@ -14,7 +14,7 @@ import type { CockpitContainer } from "@/cockpit/entrypoints/container";
 import type { ChangeActionResultDTO } from "@/cockpit/models/change_action";
 import { CockpitConfigurationError, CockpitError } from "@/cockpit/models/errors";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
-import type { SprintBoardDTO } from "@/cockpit/models/sprint_board";
+import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import {
   type AttentionChangeDTO,
   SPRINT_BOARD_CHANNEL,
@@ -79,6 +79,18 @@ const isRefusal = (error: unknown): error is Error =>
   error instanceof AttestationError ||
   error instanceof CockpitError;
 
+export async function refreshAndPublishTicket(
+  container: CockpitContainer,
+  ticketKey: string,
+  webContents: WebContents,
+): Promise<TicketCardDTO | null> {
+  const refreshed = await refreshTicket(container, ticketKey, webContents);
+  if (refreshed.card !== null) {
+    sendToRenderer(webContents, SPRINT_BOARD_CHANNEL.card, refreshed.card);
+  }
+  return refreshed.card;
+}
+
 export function registerCockpitIpc(options: CockpitIpcOptions): void {
   const container = options.container;
   const logger = container.logger("cockpit.cockpit_ipc");
@@ -135,9 +147,13 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
       const ticketKey = readText(ticketKeyPayload, "ticketKey");
       let failure: string | null = null;
       try {
-        await container.runChangeAction().execute(readChangeAction(actionPayload));
+        const action = readChangeAction(actionPayload);
+        await container.runChangeAction().execute(action);
+        if (action.kind === "reply") {
+          container.session().useDraft().execute(ticketKey, "thread_reply", action.threadId);
+        }
       } catch (error) {
-        if (!(error instanceof ChangeError)) {
+        if (!(error instanceof ChangeError || error instanceof SessionError)) {
           throw error;
         }
         failure = error.message;

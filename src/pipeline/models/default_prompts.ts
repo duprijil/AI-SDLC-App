@@ -39,7 +39,7 @@ Pull request: {{change.url}} ({{change.repo}}, branch {{change.branch}}). Work i
 Open threads waiting for a reply:
 {{threads}}
 
-Fix what the reviewers asked for and push. Draft a short reply for each thread, but don't post it.
+Fix what the reviewers asked for and push. Then hand a short reply for each thread to the developer with the sdlc draft tool (kind thread_reply, target the thread id); don't post it.
 
 ${CLOSING}
 `,
@@ -49,7 +49,7 @@ ${CLOSING}
 Repos (each a git worktree on the ticket's branch):
 {{repos}}
 
-Read the run's logs (for example with gh run view --log-failed), find the cause, and propose a fix.
+Call sdlc get_context for the deployments, read the run's logs (for example with gh run view --log-failed), find the cause, and propose a fix.
 Don't re-run or trigger any deployment.
 
 ${CLOSING}

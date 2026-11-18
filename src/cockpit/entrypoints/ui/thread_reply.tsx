@@ -11,7 +11,7 @@ export interface ThreadReplyProps {
 }
 
 export function ThreadReply({ thread, onRunAction, onDone }: ThreadReplyProps): ReactElement {
-  const [replyText, setReplyText] = useState("");
+  const [replyText, setReplyText] = useState(thread.draftText ?? "");
   const [shouldResolve, setShouldResolve] = useState(true);
   return (
     <div className="thread">
@@ -19,6 +19,7 @@ export function ThreadReply({ thread, onRunAction, onDone }: ThreadReplyProps): 
         {thread.location} · <b>{thread.lastAuthorLogin}</b>
       </div>
       <div className="quote">{thread.lastCommentBody}</div>
+      {thread.draftText !== null && <div className="draft-hint">Drafted by Claude Code. Edit it before posting.</div>}
       <textarea
         className="reply"
         placeholder="Your reply…"

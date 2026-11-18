@@ -11,6 +11,10 @@ Normal domain. Runs exactly one AI agent session per ticket: the real tool (Clau
 | Session record | A ticket's session in `cache.sqlite` (`sessions`): session id, workspace, started, ended. The newest one per ticket counts |
 | Resume | Starting `claude --resume <id>` for the newest record that hasn't ended, when Claude Code still has its transcript (`~/.claude/projects/<workspace path, non-alphanumerics as ->/<id>.jsonl`) |
 | Checkpoint | A tick on a `prompt` block: done or reopened, with an optional note (`checkpoints` table). The newest one per ticket and block counts |
+| `sdlc` tools | The MCP server the app serves to each session on `http://127.0.0.1:<port>/mcp`: `get_context`, `draft`, `checkpoint` (allowed), `code_comment`, `merge` (ask). Each call acts on the session's own ticket |
+| Agent token | A per-session secret in the session's MCP config (`<AGENT_SETTINGS_ROOT>/<session id>.mcp.json`), sent as `x-cockpit-token`; it maps a request to its session and ticket |
+| Agent actions | The port the session domain defines for what the tools do; the cockpit implements it |
+| Draft | A reply (`thread_reply`, target a review thread id) or a note (`note`, target a prompt block id) the agent hands to the developer (`drafts` table); used once posted |
 | Workspace preparation | The hook the app runs before a ticket's session starts (worktrees, context). It returns notes that are shown in the terminal |
 | Session status | `starting` → `idle` / `working` / `waiting` → `ended`, derived from hook events |
 | Hook event | A tool lifecycle callback (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SessionEnd`) posted to the app |
@@ -26,6 +30,9 @@ Normal domain. Runs exactly one AI agent session per ticket: the real tool (Clau
 - Resume the ticket's last session after an app restart. If the resume exits with an error within 5 s, start a new session once and say so in the terminal.
 - End a ticket's session on request (it reached Done): kill its PTY and mark the record ended. Quitting the app never ends records.
 - Store and read prompt block checkpoints.
+- Serve the `sdlc` MCP tools (stateless Streamable HTTP, JSON answers) and pass each call to the agent actions port with the session's ticket.
+- Write the tool policy into the session's `--settings` file: allow `get_context`, `draft`, `checkpoint`; ask for `code_comment`, `merge`; deny `gh pr merge`, `gh pr comment`, `gh pr review` and `gh api` in Bash.
+- Store drafts, list a ticket's open drafts, and mark one used.
 - Pass keystrokes and terminal resizes through to the PTY untouched.
 - Type prompts as bracketed pastes, so multi-line prompts arrive as one prompt.
 - Write per-session hook settings (`--settings <file>`, mode 600) that post every hook event to the hook endpoint.
@@ -41,6 +48,9 @@ Normal domain. Runs exactly one AI agent session per ticket: the real tool (Clau
 - A prompt is never empty, and never contains the bracketed paste terminator.
 - A workspace file is a plain file name inside the workspace, never a path.
 - A failed or slow preparation never stops the session from starting.
+- An MCP request without a known agent token gets 401. A token belongs to one running session and is replaced at every start.
+- There is no tool that moves the tracker status.
+- A refused or failed action is returned as a tool error with the reason; nothing else happens.
 - If the session records can't be read or written, sessions start fresh, as if there were no record.
 
 ## Tool-specific code
