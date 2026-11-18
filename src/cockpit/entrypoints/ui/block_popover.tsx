@@ -1,5 +1,6 @@
-import type { ReactElement, ReactNode } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 
+import { CheckpointForm } from "@/cockpit/entrypoints/ui/checkpoint_form";
 import { sprintBoardBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
 import { ConfirmButton } from "@/cockpit/entrypoints/ui/confirm_button";
 import { AttestDone, AttestTick, DeployLines } from "@/cockpit/entrypoints/ui/environment_parts";
@@ -7,7 +8,8 @@ import { ThreadReply } from "@/cockpit/entrypoints/ui/thread_reply";
 import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { BlockStateDTO, BlockStateKind, ChangeViewDTO } from "@/cockpit/models/block_state";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
-import type { PromptKind } from "@/cockpit/models/change_prompt";
+import type { CheckpointRequestDTO } from "@/cockpit/models/checkpoint_action";
+import type { PromptKind } from "@/cockpit/models/prompt_request";
 
 export const POPOVER_WIDTH = 380;
 const POPOVER_GAP = 8;
@@ -34,7 +36,8 @@ export interface BlockPopoverProps {
   readonly onClose: () => void;
   readonly onRunAction: (ticketKey: string, action: ChangeActionDTO) => Promise<string | null>;
   readonly onTickAttestation: (request: AttestTickRequestDTO) => Promise<string | null>;
-  readonly onSendPrompt: (target: PopoverTarget, kind: PromptKind) => void;
+  readonly onRecordCheckpoint: (request: CheckpointRequestDTO) => Promise<string | null>;
+  readonly onSendPrompt: (target: PopoverTarget, kind: PromptKind) => Promise<string | null>;
 }
 
 interface PopoverContext extends BlockPopoverProps {
@@ -66,17 +69,63 @@ function PromptButton({
   readonly kind: PromptKind;
   readonly label: string;
 }): ReactElement {
+  const [failure, setFailure] = useState<string | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
   return (
-    <button
-      type="button"
-      className="btn ai"
-      onClick={() => {
-        context.onSendPrompt(context.target, kind);
-        context.onClose();
-      }}
-    >
-      ▶ {label} in Claude Code
-    </button>
+    <div className="confirm">
+      <button
+        type="button"
+        className="btn ai"
+        disabled={isBusy}
+        onClick={() => {
+          setIsBusy(true);
+          setFailure(null);
+          void context.onSendPrompt(context.target, kind).then((refusal) => {
+            setIsBusy(false);
+            if (refusal === null) {
+              context.onClose();
+              return;
+            }
+            setFailure(refusal);
+          });
+        }}
+      >
+        ▶ {label} in Claude Code
+      </button>
+      {failure !== null && <div className="pop-failure">{failure}</div>}
+    </div>
+  );
+}
+
+const BUILT_IN_PROMPT_KINDS: readonly BlockStateKind[] = [
+  "no_change",
+  "ci_failing",
+  "conflict",
+  "feedback",
+  "deploy_failed",
+  "prompt_open",
+  "prompt_done",
+];
+
+function PipelinePrompt({ context }: { readonly context: PopoverContext }): ReactElement | null {
+  const block = context.target.block;
+  if (block.promptTemplates.length === 0 || BUILT_IN_PROMPT_KINDS.includes(block.kind)) {
+    return null;
+  }
+  return <PromptButton context={context} kind="block_prompt" label={`Send ${block.promptTemplates.join(", ")}`} />;
+}
+
+function promptBlock(context: PopoverContext): ReactNode {
+  return (
+    <>
+      <PromptButton context={context} kind="block_prompt" label="Send" />
+      <CheckpointForm
+        ticketKey={context.target.ticketKey}
+        block={context.target.block}
+        onRecord={context.onRecordCheckpoint}
+        onDone={context.onClose}
+      />
+    </>
   );
 }
 
@@ -132,6 +181,8 @@ const ACTIONS: Partial<Record<BlockStateKind, (context: PopoverContext) => React
     </>
   ),
   could_not_check: (context) => (context.target.block.deployLines.length > 0 ? deployLines(context) : null),
+  prompt_open: promptBlock,
+  prompt_done: promptBlock,
   attest_open: attestTick,
   attest_stale: attestTick,
   attest_done: (context) =>
@@ -196,6 +247,7 @@ export function BlockPopover(props: BlockPopoverProps): ReactElement {
           {target.ticketKey} · {target.block.change?.title ?? target.ticketTitle}
         </div>
         {ACTIONS[target.block.kind]?.(context)}
+        <PipelinePrompt context={context} />
         <OpenLinks change={target.block.change} />
       </div>
     </>

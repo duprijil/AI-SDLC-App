@@ -58,6 +58,9 @@ function attachTerminal(
     }),
     bridge.onStatus((session) => {
       if (session.ticketKey === ticketKey && !isDetached) {
+        if (session.status !== "ended") {
+          sessionId = session.sessionId;
+        }
         onSession(session);
       }
     }),

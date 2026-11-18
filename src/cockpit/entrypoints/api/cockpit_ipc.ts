@@ -5,6 +5,7 @@ import { ChangeError } from "@/change/models/errors";
 import {
   readAttestTick,
   readChangeAction,
+  readCheckpointRequest,
   readExternalUrl,
   readPromptRequest,
   readStatusMoveRequest,
@@ -23,6 +24,7 @@ import type { StatusMovePreviewDTO, StatusMoveResultDTO } from "@/cockpit/models
 import { DeliveryError } from "@/delivery/models/errors";
 import { readText } from "@/session/entrypoints/api/ipc_payload";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
+import { SessionError } from "@/session/models/errors";
 import { SprintCacheError } from "@/ticket/models/errors";
 
 export interface CockpitIpcOptions {
@@ -103,7 +105,9 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
 
   ipcMain.handle(SPRINT_BOARD_CHANNEL.refreshAll, async (event): Promise<SprintBoardDTO> => {
     try {
+      const previous = container.showCachedSprintBoard().execute(activityOf)?.toDTO() ?? null;
       const board = await container.refreshSprintBoard().execute();
+      container.endFinishedSessions().execute(previous, board.toDTO());
       const result = await container.refreshTicketFlows().execute({
         board: board.toDTO(),
         ticketKeys: board.ticketKeys(),
@@ -144,8 +148,10 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
     },
   );
 
-  ipcMain.handle(SPRINT_BOARD_CHANNEL.changePrompt, async (_event, requestPayload: unknown): Promise<string> =>
-    container.buildChangePrompt().execute(readPromptRequest(requestPayload)),
+  ipcMain.handle(
+    SPRINT_BOARD_CHANNEL.changePrompt,
+    async (_event, requestPayload: unknown): Promise<readonly string[]> =>
+      container.renderBlockPrompt().execute(readPromptRequest(requestPayload)),
   );
 
   ipcMain.handle(
@@ -187,6 +193,29 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
       return { failure, card: refreshed.card };
     },
   );
+
+  ipcMain.handle(
+    SPRINT_BOARD_CHANNEL.checkpoint,
+    async (event, requestPayload: unknown): Promise<ChangeActionResultDTO> => {
+      const request = readCheckpointRequest(requestPayload);
+      let failure: string | null = null;
+      try {
+        container
+          .session()
+          .recordCheckpoint()
+          .execute({ ...request, recordedAt: new Date().toISOString() });
+      } catch (error) {
+        if (!(error instanceof SessionError)) {
+          throw error;
+        }
+        failure = error.message;
+      }
+      const refreshed = await refreshTicket(container, request.ticketKey, event.sender);
+      return { failure, card: refreshed.card };
+    },
+  );
+
+  ipcMain.handle(SPRINT_BOARD_CHANNEL.writeDefaultPrompts, (): readonly string[] => container.writeDefaultPrompts());
 
   ipcMain.handle(SPRINT_BOARD_CHANNEL.openInTracker, async (_event, ticketKeyPayload: unknown): Promise<void> => {
     await shell.openExternal(container.trackerBrowseUrl(readText(ticketKeyPayload, "ticketKey")));

@@ -31,6 +31,8 @@ export type BlockStateKind =
   | "attest_stale"
   | "attest_done"
   | "attest_waits"
+  | "prompt_open"
+  | "prompt_done"
   | "not_checked_yet"
   | "could_not_check"
   | "waits";
@@ -76,6 +78,7 @@ export interface BlockStateDTO {
   readonly envName: string | null;
   readonly deployLines: readonly DeployLineDTO[];
   readonly attestation: AttestationViewDTO | null;
+  readonly promptTemplates: readonly string[];
 }
 
 interface KindMeta {
@@ -108,12 +111,51 @@ const KIND_META: Readonly<Record<BlockStateKind, KindMeta>> = {
   attest_stale: { tone: "warn", isFinished: false, caption: "stale · the deployed commits changed" },
   attest_done: { tone: "ok", isFinished: true, caption: "validated" },
   attest_waits: { tone: "lock", isFinished: false, caption: "waits for the deployment" },
+  prompt_open: { tone: "warn", isFinished: false, caption: "open · send or mark done" },
+  prompt_done: { tone: "ok", isFinished: true, caption: "done" },
   not_checked_yet: { tone: "idle", isFinished: true, caption: "checked from M4" },
   could_not_check: { tone: "lock", isFinished: false, caption: "could not check" },
   waits: { tone: "lock", isFinished: false, caption: "waits for the block above" },
 };
 
+const ACTION_STATE_OF: Readonly<Partial<Record<BlockStateKind, string>>> = {
+  no_change: "none",
+  draft: "draft",
+  ci_failing: "ci_failing",
+  ready: "ready",
+  merged: "merged",
+  conflict: "conflict",
+  feedback: "feedback",
+  behind: "behind",
+  approved: "approved",
+  in_review: "in_review",
+  tracker_open: "open",
+  tracker_done: "done",
+  deploy_na: "n_a",
+  deploy_done: "done",
+  deploy_failed: "failed",
+  deploy_running: "deploying",
+  deploy_partial: "partial",
+  deploy_waiting: "waiting",
+  deploy_manual: "manual",
+  attest_open: "open",
+  attest_stale: "stale",
+  attest_done: "done",
+  prompt_open: "open",
+  prompt_done: "done",
+};
+
+const promptTemplatesFor = (template: BlockTemplateDTO, kind: BlockStateKind): readonly string[] => {
+  const state = ACTION_STATE_OF[kind];
+  const mapped = state === undefined ? [] : (template.promptActions[state] ?? []);
+  if (mapped.length > 0 || template.promptFile === null) {
+    return mapped;
+  }
+  return [template.promptFile];
+};
+
 const NEEDS_YOU_KINDS: readonly BlockStateKind[] = [
+  "prompt_open",
   "feedback",
   "conflict",
   "behind",
@@ -186,6 +228,7 @@ function blockState(template: BlockTemplateDTO, kind: BlockStateKind, parts: Blo
     envName: template.envName,
     deployLines: parts.deployLines ?? [],
     attestation: parts.attestation ?? null,
+    promptTemplates: promptTemplatesFor(template, kind),
   };
 }
 
@@ -252,6 +295,14 @@ export const BlockState = {
 
   attestWaits(template: BlockTemplateDTO, reason: string): BlockStateDTO {
     return blockState(template, "attest_waits", { title: template.title, caption: reason });
+  },
+
+  forPrompt(template: BlockTemplateDTO, isDone: boolean, note: string | null): BlockStateDTO {
+    const caption = isDone && note !== null && note !== "" ? `done · ${note}` : undefined;
+    return blockState(template, isDone ? "prompt_done" : "prompt_open", {
+      title: template.title,
+      ...(caption === undefined ? {} : { caption }),
+    });
   },
 
   notCheckedYet(template: BlockTemplateDTO): BlockStateDTO {

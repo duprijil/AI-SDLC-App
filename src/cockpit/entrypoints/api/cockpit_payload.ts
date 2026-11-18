@@ -2,8 +2,9 @@ import { z } from "zod";
 
 import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
-import { type ChangePromptRequestDTO, PROMPT_KINDS } from "@/cockpit/models/change_prompt";
+import type { CheckpointRequestDTO } from "@/cockpit/models/checkpoint_action";
 import { CockpitError } from "@/cockpit/models/errors";
+import { PROMPT_KINDS, type PromptRequestDTO } from "@/cockpit/models/prompt_request";
 import type { StatusMoveRequestDTO } from "@/cockpit/models/status_move_action";
 
 const GITHUB_ORIGIN = "https://github.com";
@@ -44,6 +45,14 @@ const promptRequestSchema = z.object({
   change: changeViewSchema.nullable(),
   threads: z.array(threadViewSchema),
   runUrls: z.array(z.url()).max(20).default([]),
+  templateNames: z.array(z.string().min(1)).max(10).default([]),
+});
+
+const checkpointSchema = z.object({
+  ticketKey: z.string().min(1),
+  blockId: z.string().min(1),
+  state: z.enum(["done", "open"]),
+  note: z.string().max(2000),
 });
 
 const attestTickSchema = z.object({
@@ -74,7 +83,11 @@ export function readChangeAction(payload: unknown): ChangeActionDTO {
   return parse(changeActionSchema, payload, "change action");
 }
 
-export function readPromptRequest(payload: unknown): ChangePromptRequestDTO {
+export function readCheckpointRequest(payload: unknown): CheckpointRequestDTO {
+  return parse(checkpointSchema, payload, "checkpoint");
+}
+
+export function readPromptRequest(payload: unknown): PromptRequestDTO {
   return parse(promptRequestSchema, payload, "prompt request");
 }
 

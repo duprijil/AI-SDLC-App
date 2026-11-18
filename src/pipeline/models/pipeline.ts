@@ -1,5 +1,6 @@
 import { ensure } from "@/core/models/invariant";
 import { InvalidProjectConfigError } from "@/pipeline/models/errors";
+import { PromptTemplate } from "@/pipeline/models/prompt_template";
 
 export const BLOCK_TYPES = ["change", "deploy", "attest", "tracker", "prompt"] as const;
 
@@ -16,9 +17,38 @@ export interface BlockTemplateDTO {
   readonly changeCheck: ChangeCheck | null;
   readonly envName: string | null;
   readonly doneWhen: string | null;
+  readonly promptActions: Readonly<Record<string, readonly string[]>>;
+  readonly promptFile: string | null;
+}
+
+export const ACTION_STATES: Readonly<Record<BlockType, readonly string[]>> = Object.freeze({
+  change: [
+    "none",
+    "draft",
+    "ci_failing",
+    "ready",
+    "conflict",
+    "feedback",
+    "behind",
+    "approved",
+    "in_review",
+    "merged",
+    "drafted",
+  ],
+  deploy: ["waiting", "deploying", "failed", "partial", "done", "n_a", "manual"],
+  attest: ["open", "stale", "done"],
+  tracker: ["open", "done"],
+  prompt: ["open", "done"],
+});
+
+export interface PromptReferenceDTO {
+  readonly templateName: string;
+  readonly hasChange: boolean;
+  readonly where: string;
 }
 
 const ATTESTED_CHECK = "attested";
+const CHECKPOINT_CHECK_PREFIX = "session.checkpoint(";
 
 export interface FlowLevelDTO {
   readonly runsPerChange: boolean;
@@ -28,6 +58,7 @@ export interface FlowLevelDTO {
 export interface PipelineColumnDTO {
   readonly columnKey: string;
   readonly levels: readonly FlowLevelDTO[];
+  readonly gatePrompts: readonly string[];
 }
 
 export interface PipelineDTO {
@@ -86,6 +117,41 @@ function environmentBlockProblems(column: PipelineColumnDTO): readonly string[] 
   );
 }
 
+function actionProblems(column: PipelineColumnDTO): readonly string[] {
+  const blocks = column.levels.flatMap((level) => level.blocks);
+  const blockProblems = blocks.flatMap((block) => {
+    const blockPath = `columns.${column.columnKey}: block ${block.blockId}`;
+    const allowed = ACTION_STATES[block.blockType];
+    const stateProblems = Object.keys(block.promptActions)
+      .filter((state) => !allowed.includes(state))
+      .map(
+        (state) =>
+          `${blockPath}: actions.${state} is not a state of a ${block.blockType} block (${allowed.join(", ")})`,
+      );
+    const names = [
+      ...Object.values(block.promptActions).flat(),
+      ...(block.promptFile === null ? [] : [block.promptFile]),
+    ];
+    const nameProblems = names
+      .filter((name) => !PromptTemplate.isName(name))
+      .map((name) => `${blockPath}: a prompt is a file prompts/<name>.md: ${name}`);
+    const promptBlockProblems =
+      block.blockType !== "prompt"
+        ? []
+        : [
+            ...(block.promptFile === null ? [`${blockPath}: a prompt block needs prompt: prompts/<name>.md`] : []),
+            ...(block.doneWhen === null || block.doneWhen.startsWith(CHECKPOINT_CHECK_PREFIX)
+              ? []
+              : [`${blockPath}: a prompt block is done_when: session.checkpoint(<kind>)`]),
+          ];
+    return [...stateProblems, ...nameProblems, ...promptBlockProblems];
+  });
+  const gateProblems = column.gatePrompts
+    .filter((name) => !PromptTemplate.isName(name))
+    .map((name) => `columns.${column.columnKey}.gate.then: a prompt is a file prompts/<name>.md: ${name}`);
+  return [...blockProblems, ...gateProblems];
+}
+
 function pipelineProblems(pipeline: PipelineDTO): readonly string[] {
   const columnKeys = pipeline.columns.map((column) => column.columnKey);
   const blockIds = pipeline.columns.flatMap((column) =>
@@ -103,6 +169,7 @@ function pipelineProblems(pipeline: PipelineDTO): readonly string[] {
     ...pipeline.columns.flatMap(levelProblems),
     ...pipeline.columns.flatMap(changeCheckProblems),
     ...pipeline.columns.flatMap(environmentBlockProblems),
+    ...pipeline.columns.flatMap(actionProblems),
   ];
 }
 
@@ -121,6 +188,39 @@ export class Pipeline {
 
   columnKeys(): readonly string[] {
     return this.columns.map((column) => column.columnKey);
+  }
+
+  promptReferences(): readonly PromptReferenceDTO[] {
+    return this.columns.flatMap((column) => [
+      ...column.levels.flatMap((level) =>
+        level.blocks.flatMap((block) => {
+          const where = `columns.${column.columnKey}: block ${block.blockId}`;
+          const fromActions = Object.values(block.promptActions)
+            .flat()
+            .map((templateName) => ({ templateName, hasChange: block.blockType === "change", where }));
+          const fromBlock =
+            block.promptFile === null ? [] : [{ templateName: block.promptFile, hasChange: false, where }];
+          return [...fromActions, ...fromBlock];
+        }),
+      ),
+      ...column.gatePrompts.map((templateName) => ({
+        templateName,
+        hasChange: false,
+        where: `columns.${column.columnKey}.gate`,
+      })),
+    ]);
+  }
+
+  promptsAfterForwardMove(fromColumnKey: string): readonly string[] {
+    const column = this.columnFor(fromColumnKey);
+    if (column === null) {
+      return [];
+    }
+    const trackerPrompts = column.levels
+      .flatMap((level) => level.blocks)
+      .filter((block) => block.blockType === "tracker")
+      .flatMap((block) => block.promptActions["open"] ?? []);
+    return [...new Set([...trackerPrompts, ...column.gatePrompts])];
   }
 
   environmentBlocks(): readonly BlockTemplateDTO[] {

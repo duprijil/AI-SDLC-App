@@ -14,4 +14,11 @@ export class AgentCliClaudeCode implements AgentCliPort {
       commandArguments: ["--session-id", sessionId, "--settings", settingsFilePath],
     };
   }
+
+  resumeCommand(sessionId: string, settingsFilePath: string): AgentLaunchCommand {
+    return {
+      command: this.#agentCommand,
+      commandArguments: ["--resume", sessionId, "--settings", settingsFilePath],
+    };
+  }
 }

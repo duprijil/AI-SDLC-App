@@ -10,6 +10,8 @@ import {
 import type { TicketFlowDTO } from "@/cockpit/models/ticket_flow";
 import type { RefreshSprintBoard } from "@/cockpit/use_cases/refresh_sprint_board";
 import type { RefreshTicketFlows } from "@/cockpit/use_cases/refresh_ticket_flows";
+import type { Pipeline } from "@/pipeline/models/pipeline";
+import type { EndTicketSession } from "@/session/use_cases/end_ticket_session";
 import { TicketError, TicketStatusChangedError } from "@/ticket/models/errors";
 import type { MoveTicket } from "@/ticket/use_cases/move_ticket";
 import type { ReadCachedSprint } from "@/ticket/use_cases/read_cached_sprint";
@@ -26,33 +28,42 @@ export interface StatusMoveSteps {
   readonly refreshSprintBoard: RefreshSprintBoard;
   readonly refreshTicketFlows: RefreshTicketFlows;
   readonly flowCache: FlowCachePort;
+  readonly endTicketSession: EndTicketSession;
 }
 
 export class RunStatusMove {
   readonly #steps: StatusMoveSteps;
   readonly #projectKey: string;
+  readonly #pipeline: Pipeline;
 
-  constructor(steps: StatusMoveSteps, projectKey: string) {
+  constructor(steps: StatusMoveSteps, projectKey: string, pipeline: Pipeline) {
     this.#steps = steps;
     this.#projectKey = projectKey;
+    this.#pipeline = pipeline;
   }
 
   async execute(request: RunStatusMoveRequest): Promise<StatusMoveResultDTO> {
     let failure: string | null = null;
+    let promptTemplates: readonly string[] = [];
     try {
       const plan = StatusMovePlan.resolve(this.#steps.readCachedSprint.execute(this.#projectKey), request.move);
       await this.#steps.moveTicket.execute(plan.target);
+      if (plan.isIntoLastColumn) {
+        this.#steps.endTicketSession.execute(plan.target.ticketKey);
+      } else if (plan.direction === "forward") {
+        promptTemplates = this.#pipeline.promptsAfterForwardMove(plan.fromColumnKey);
+      }
     } catch (error) {
       if (!(error instanceof TicketError || error instanceof CockpitError)) {
         throw error;
       }
       if (!(error instanceof TicketStatusChangedError)) {
-        return { failure: error.message, board: null };
+        return { failure: error.message, board: null, promptTemplates: [] };
       }
       failure = error.message;
     }
     const board = await this.#boardAfterMove(request);
-    return { failure, board: board.toDTO() };
+    return { failure, board: board.toDTO(), promptTemplates };
   }
 
   async #boardAfterMove(request: RunStatusMoveRequest): Promise<SprintBoard> {

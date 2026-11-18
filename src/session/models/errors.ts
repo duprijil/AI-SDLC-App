@@ -41,3 +41,11 @@ export class HookSettingsWriteError extends SessionError {
 export class InvalidWorkspaceFileError extends SessionError {
   override readonly name: string = "InvalidWorkspaceFileError";
 }
+
+export class SessionRecordError extends SessionError {
+  override readonly name: string = "SessionRecordError";
+}
+
+export class InvalidCheckpointError extends SessionError {
+  override readonly name: string = "InvalidCheckpointError";
+}

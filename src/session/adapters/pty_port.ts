@@ -18,5 +18,6 @@ export interface PtyPort {
   attach(sessionId: string, listener: PtyListener): void;
   write(sessionId: string, keystrokes: string): void;
   resize(sessionId: string, size: TerminalSize): void;
+  kill(sessionId: string): void;
   killAll(): void;
 }

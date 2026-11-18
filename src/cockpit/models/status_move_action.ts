@@ -21,12 +21,15 @@ export interface StatusMovePreviewDTO {
 export interface StatusMoveResultDTO {
   readonly failure: string | null;
   readonly board: SprintBoardDTO | null;
+  readonly promptTemplates: readonly string[];
 }
 
 export interface StatusMovePlanDTO {
   readonly target: StatusMoveTargetDTO;
   readonly direction: ColumnMoveDirection;
   readonly fromStatusName: string;
+  readonly fromColumnKey: string;
+  readonly isIntoLastColumn: boolean;
 }
 
 export const StatusMovePlan = {
@@ -37,7 +40,8 @@ export const StatusMovePlan = {
     }
     const currentColumnIndex = snapshot.board.columnIndexFor(ticket.statusId);
     const targetColumn = snapshot.board.columns[request.targetColumnIndex];
-    if (currentColumnIndex === null || targetColumn === undefined) {
+    const fromColumn = currentColumnIndex === null ? undefined : snapshot.board.columns[currentColumnIndex];
+    if (fromColumn === undefined || targetColumn === undefined || currentColumnIndex === null) {
       throw new InvalidStatusMoveError(`${request.ticketKey} can't be moved from its current status`);
     }
     const isForward = request.targetColumnIndex === currentColumnIndex + 1;
@@ -54,6 +58,8 @@ export const StatusMovePlan = {
       },
       direction: isForward ? "forward" : "back",
       fromStatusName: ticket.statusName,
+      fromColumnKey: fromColumn.columnKey,
+      isIntoLastColumn: request.targetColumnIndex === snapshot.board.columns.length - 1,
     };
   },
 };

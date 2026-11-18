@@ -1,5 +1,6 @@
 import { type ReactElement, useState } from "react";
 
+import { sprintBoardBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
 import type { AttentionKind } from "@/cockpit/models/attention";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
@@ -86,6 +87,31 @@ export function FailureBanner({ board }: { readonly board: SprintBoardDTO | null
   );
 }
 
+function WriteDefaultPrompts(): ReactElement {
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <div className="live-row">
+      <button
+        type="button"
+        className="btn"
+        onClick={() => {
+          sprintBoardBridge()
+            .writeDefaultPrompts()
+            .then((written) => {
+              setMessage(written.length === 0 ? "All default prompts already exist" : `Wrote ${written.join(", ")}`);
+            })
+            .catch((error: unknown) => {
+              setMessage(error instanceof Error ? error.message : "Couldn't write the prompts");
+            });
+        }}
+      >
+        ↓ Write default prompts
+      </button>
+      {message !== null && <span className="live-note">{message}</span>}
+    </div>
+  );
+}
+
 export function LiveStatus({ board }: { readonly board: SprintBoardDTO | null }): ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const jira = board?.failure ?? null;
@@ -117,6 +143,7 @@ export function LiveStatus({ board }: { readonly board: SprintBoardDTO | null })
             <i className="att att-agent_working" />
             Claude Code · one session per ticket
           </div>
+          <WriteDefaultPrompts />
         </div>
       )}
     </span>

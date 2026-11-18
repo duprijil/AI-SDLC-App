@@ -33,7 +33,17 @@ const blockSchema = z.looseObject({
   done_when: z.string().optional(),
   env: z.string().min(1).optional(),
   pin: z.string().min(1).optional(),
+  prompt: z.string().min(1).optional(),
+  actions: z.record(z.string(), z.array(z.unknown())).default({}),
 });
+
+const sessionActionSchema = z.looseObject({ session: z.string().min(1) });
+
+const sessionPromptsOf = (actions: readonly unknown[]): readonly string[] =>
+  actions.flatMap((action) => {
+    const parsed = sessionActionSchema.safeParse(action);
+    return parsed.success ? [parsed.data.session] : [];
+  });
 
 const PIN_PATTERN = /^env\("([\w-]+)"\)\.commits$/;
 
@@ -73,7 +83,13 @@ const repoSchema = z.looseObject({
 const levelSchema = z.union([z.array(blockSchema).min(1), z.looseObject({ each_change: blockSchema })]);
 
 const pipelineSchema = z.object({
-  columns: z.record(z.string(), z.looseObject({ flow: z.array(levelSchema).default([]) })),
+  columns: z.record(
+    z.string(),
+    z.looseObject({
+      flow: z.array(levelSchema).default([]),
+      gate: z.looseObject({ then: z.array(z.unknown()).default([]) }).optional(),
+    }),
+  ),
 });
 
 const projectSchema = z.looseObject({
@@ -126,6 +142,12 @@ const toBlockTemplate = (block: BlockEntry): FlowLevelDTO["blocks"][number] => (
   changeCheck: block.type === "change" ? (CHANGE_CHECK_BY_DONE_WHEN[block.done_when ?? ""] ?? null) : null,
   envName: envNameOf(block),
   doneWhen: block.done_when ?? null,
+  promptActions: Object.fromEntries(
+    Object.entries(block.actions)
+      .map(([state, actions]) => [state, sessionPromptsOf(actions)] as const)
+      .filter(([, prompts]) => prompts.length > 0),
+  ),
+  promptFile: block.prompt ?? null,
 });
 
 const expandHome = (path: string): string =>
@@ -180,6 +202,7 @@ export class ProjectSourceYaml implements ProjectSourcePort {
     const columns: PipelineColumnDTO[] = Object.entries(entry.columns).map(([columnKey, column]) => ({
       columnKey,
       levels: column.flow.map(toFlowLevel),
+      gatePrompts: sessionPromptsOf(column.gate?.then ?? []),
     }));
     return this.#build(displayPath, () => Pipeline.create({ columns }));
   }

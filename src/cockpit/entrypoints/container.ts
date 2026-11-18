@@ -9,13 +9,14 @@ import { FlowCacheSqlite } from "@/cockpit/adapters/flow_cache_sqlite";
 import { type AgentActivity, Attention } from "@/cockpit/models/attention";
 import { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
-import { BuildChangePrompt } from "@/cockpit/use_cases/build_change_prompt";
 import { CheckTicketEnvironments } from "@/cockpit/use_cases/check_ticket_environments";
+import { EndFinishedSessions } from "@/cockpit/use_cases/end_finished_sessions";
 import { PrepareTicketWorkspace } from "@/cockpit/use_cases/prepare_ticket_workspace";
 import { PreviewStatusMove } from "@/cockpit/use_cases/preview_status_move";
 import { ReassessAttention } from "@/cockpit/use_cases/reassess_attention";
 import { RefreshSprintBoard } from "@/cockpit/use_cases/refresh_sprint_board";
 import { RefreshTicketFlows } from "@/cockpit/use_cases/refresh_ticket_flows";
+import { RenderBlockPrompt } from "@/cockpit/use_cases/render_block_prompt";
 import { RunAttestation } from "@/cockpit/use_cases/run_attestation";
 import { RunChangeAction } from "@/cockpit/use_cases/run_change_action";
 import { RunStatusMove } from "@/cockpit/use_cases/run_status_move";
@@ -60,20 +61,23 @@ export class CockpitContainer {
   readonly #attestationContainer: AttestationContainer;
   readonly #sessionContainer: SessionContainer;
   readonly #flowCache: FlowCachePort;
+  readonly #pipelineContainer: PipelineContainer;
   readonly #briefStore: BriefStorePort;
 
   constructor() {
     const problems: string[] = [];
+    const pipelineContainer = new PipelineContainer();
     const config = collectProblems(loadProjectConfig, problems);
     const secrets: ProjectSecrets | null = collectProblems(loadProjectSecrets, problems);
     const projectDefinition =
       config === null
         ? null
-        : collectProblems(() => new PipelineContainer().loadProject().execute(config.activeProject), problems);
+        : collectProblems(() => pipelineContainer.loadProject().execute(config.activeProject), problems);
     if (config === null || secrets === null || projectDefinition === null) {
       throw new CockpitConfigurationError(problems);
     }
     this.#config = config;
+    this.#pipelineContainer = pipelineContainer;
     this.#projectDefinition = projectDefinition;
     this.#ticketContainer = new TicketContainer(projectDefinition.project.tracker.siteUrl, secrets);
     this.#changeContainer = new ChangeContainer(secrets);
@@ -124,6 +128,7 @@ export class CockpitContainer {
         findTicketChanges: this.#changeContainer.findTicketChanges(),
         checkTicketEnvironments: this.#checkTicketEnvironments(),
         findAttestation: this.#attestationContainer.findAttestation(),
+        findCheckpoint: this.#sessionContainer.findCheckpoint(),
         flowCache: this.#flowCache,
       },
       this.#projectDefinition,
@@ -188,13 +193,27 @@ export class CockpitContainer {
         refreshSprintBoard: this.refreshSprintBoard(),
         refreshTicketFlows: this.refreshTicketFlows(),
         flowCache: this.#flowCache,
+        endTicketSession: this.#sessionContainer.endTicketSession(),
       },
+      this.#projectDefinition.project.projectKey,
+      this.#projectDefinition.pipeline,
+    );
+  }
+
+  renderBlockPrompt(): RenderBlockPrompt {
+    return new RenderBlockPrompt(
+      this.prepareTicketWorkspace(),
+      this.#pipelineContainer.readPromptTemplate(),
       this.#projectDefinition.project.projectKey,
     );
   }
 
-  buildChangePrompt(): BuildChangePrompt {
-    return new BuildChangePrompt(this.prepareTicketWorkspace());
+  writeDefaultPrompts(): readonly string[] {
+    return this.#pipelineContainer.writeDefaultPrompts().execute(this.#projectDefinition.project.projectKey);
+  }
+
+  endFinishedSessions(): EndFinishedSessions {
+    return new EndFinishedSessions(this.#sessionContainer.endTicketSession());
   }
 
   prepareTicketWorkspace(): PrepareTicketWorkspace {
