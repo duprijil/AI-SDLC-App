@@ -10,6 +10,7 @@ import {
   type SprintBoardBridge,
   type TicketRefreshDTO,
 } from "@/cockpit/models/sprint_board_bridge";
+import type { StatusMovePreviewDTO, StatusMoveResultDTO } from "@/cockpit/models/status_move_action";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import {
   SESSION_BRIDGE_GLOBAL,
@@ -63,6 +64,9 @@ const sprintBoardBridge: SprintBoardBridge = {
   runChangeAction: async (ticketKey, action) =>
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changeAction, ticketKey, action)) as ChangeActionResultDTO,
   buildPrompt: async (request) => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changePrompt, request)) as string,
+  previewStatusMove: async (request) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.movePreview, request)) as StatusMovePreviewDTO,
+  moveStatus: async (request) => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.move, request)) as StatusMoveResultDTO,
   openInTracker: async (ticketKey) => {
     await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.openInTracker, ticketKey);
   },

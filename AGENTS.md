@@ -43,7 +43,7 @@ The full list is proposed in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §
 | session | normal | One Claude Code session per ticket: workspace, PTY, hooks, prompts | [docs/domains/session.md](docs/domains/session.md) |
 | change | normal | Pull requests linked to a ticket: review state from the viewer's side, merge, update branch, reply | [docs/domains/change.md](docs/domains/change.md) |
 | pipeline | normal | Project and pipeline config: load and validate (editing in M5) | [docs/domains/pipeline.md](docs/domains/pipeline.md) |
-| ticket | normal | Tracker tickets and board columns from Jira, with a SQLite cache (status moves in M3) | [docs/domains/ticket.md](docs/domains/ticket.md) |
+| ticket | normal | Tracker tickets and board columns from Jira, with a SQLite cache, and status moves | [docs/domains/ticket.md](docs/domains/ticket.md) |
 | cockpit | combined | Desktop bootstrap, sprint board, refresh engine, block states, gates, attention; My tickets and Cockpit screens | [docs/domains/cockpit.md](docs/domains/cockpit.md) |
 | delivery | normal | Deploy runs, runtime state, "environment contains change" | planned |
 | attestation | normal | Human ticks pinned to deployed commits | planned |

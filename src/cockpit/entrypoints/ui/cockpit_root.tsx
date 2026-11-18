@@ -8,9 +8,11 @@ import { BlockPopover, type PopoverTarget } from "@/cockpit/entrypoints/ui/block
 import { sprintBoardBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
 import { CockpitScreen, type PromptHandOff } from "@/cockpit/entrypoints/ui/cockpit_screen";
 import { MyTicketsScreen } from "@/cockpit/entrypoints/ui/my_tickets_screen";
+import { StatusMovePopover, type StatusMoveTarget } from "@/cockpit/entrypoints/ui/status_move_popover";
 import { useSprintBoard } from "@/cockpit/entrypoints/ui/use_sprint_board";
 import type { BlockStateDTO } from "@/cockpit/models/block_state";
 import type { PromptKind } from "@/cockpit/models/change_prompt";
+import type { ColumnMoveDTO } from "@/cockpit/models/column_move";
 import { CockpitError } from "@/cockpit/models/errors";
 
 const ROOT_ELEMENT_ID = "root";
@@ -29,6 +31,7 @@ function CockpitApp(): ReactElement {
   const [screen, setScreen] = useState<Screen>({ name: "tickets" });
   const [morphingTicketKey, setMorphingTicketKey] = useState<string | null>(null);
   const [popoverTarget, setPopoverTarget] = useState<PopoverTarget | null>(null);
+  const [moveTarget, setMoveTarget] = useState<StatusMoveTarget | null>(null);
   const [promptHandOff, setPromptHandOff] = useState<PromptHandOff | null>(null);
 
   const openTicket = useCallback((ticketKey: string) => {
@@ -60,9 +63,21 @@ function CockpitApp(): ReactElement {
     });
   }, [screen]);
 
+  const moveClickFor = useCallback(
+    (ticketKey: string) =>
+      (move: ColumnMoveDTO, anchor: HTMLElement): void => {
+        setMoveTarget({ ticketKey, move, anchorRect: anchor.getBoundingClientRect() });
+      },
+    [],
+  );
+
   const blockClickFor = useCallback(
     (ticketKey: string) =>
       (block: BlockStateDTO, anchor: HTMLElement): void => {
+        if (block.moveTo !== null) {
+          moveClickFor(ticketKey)(block.moveTo, anchor);
+          return;
+        }
         const card = board?.cards.find((boardCard) => boardCard.ticketKey === ticketKey);
         setPopoverTarget({
           ticketKey,
@@ -71,7 +86,7 @@ function CockpitApp(): ReactElement {
           anchorRect: anchor.getBoundingClientRect(),
         });
       },
-    [board],
+    [board, moveClickFor],
   );
 
   const sendPrompt = useCallback(
@@ -106,15 +121,30 @@ function CockpitApp(): ReactElement {
     setPromptHandOff((current) => (current === null ? null : { ...current, hasTimedOut: true }));
   }, []);
 
-  const popover = popoverTarget !== null && (
-    <BlockPopover
-      target={popoverTarget}
-      onClose={() => {
-        setPopoverTarget(null);
-      }}
-      onRunAction={sprintBoard.runChangeAction}
-      onSendPrompt={sendPrompt}
-    />
+  const popover = (
+    <>
+      {popoverTarget !== null && (
+        <BlockPopover
+          target={popoverTarget}
+          onClose={() => {
+            setPopoverTarget(null);
+          }}
+          onRunAction={sprintBoard.runChangeAction}
+          onSendPrompt={sendPrompt}
+        />
+      )}
+      {moveTarget !== null && (
+        <StatusMovePopover
+          key={`${moveTarget.ticketKey}-${String(moveTarget.move.columnIndex)}`}
+          target={moveTarget}
+          columnName={board?.columns[moveTarget.move.columnIndex]?.name ?? ""}
+          onClose={() => {
+            setMoveTarget(null);
+          }}
+          onMove={sprintBoard.moveStatus}
+        />
+      )}
+    </>
   );
 
   if (screen.name === "cockpit") {
@@ -130,6 +160,7 @@ function CockpitApp(): ReactElement {
           onSelectTicket={selectTicket}
           onBack={backToTickets}
           onBlockClick={blockClickFor(screen.ticketKey)}
+          onMoveClick={moveClickFor(screen.ticketKey)}
           onPromptDelivered={promptDelivered}
           onPromptTimedOut={promptTimedOut}
         />
@@ -147,6 +178,7 @@ function CockpitApp(): ReactElement {
         onRefresh={sprintBoard.refreshAll}
         onOpenTicket={openTicket}
         onBlockClick={blockClickFor}
+        onMoveClick={moveClickFor}
       />
       {popover}
     </>

@@ -5,6 +5,7 @@ import type { FindTicketChanges } from "@/change/use_cases/find_ticket_changes";
 import type { ListRecentChanges } from "@/change/use_cases/list_recent_changes";
 import type { FlowCachePort } from "@/cockpit/adapters/flow_cache_port";
 import { BlockState, type BlockStateDTO } from "@/cockpit/models/block_state";
+import { ColumnMove, type ColumnMoveDTO } from "@/cockpit/models/column_move";
 import { RefreshProgress, type RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { BoardColumnViewDTO, SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import { type CheckedColumnDTO, type LevelFlowDTO, TicketFlow, type TicketFlowDTO } from "@/cockpit/models/ticket_flow";
@@ -58,6 +59,9 @@ const isTrackerDone = (position: number, check: TicketCheck): boolean => {
   const isLastColumn = position === check.columns.length - 1;
   return ticketColumnIndex > position || (isLastColumn && ticketColumnIndex === position);
 };
+
+const trackerMoveFrom = (position: number, check: TicketCheck): ColumnMoveDTO | null =>
+  position === check.card.columnIndex ? ColumnMove.forwardFrom(position, check.columns.length) : null;
 
 export class RefreshTicketFlows {
   readonly #listRecentChanges: ListRecentChanges;
@@ -163,7 +167,7 @@ export class RefreshTicketFlows {
     }
     return level.blocks.map((template) =>
       template.blockType === "tracker"
-        ? BlockState.forTracker(template, isTrackerDone(position, check))
+        ? BlockState.forTracker(template, isTrackerDone(position, check), trackerMoveFrom(position, check))
         : BlockState.notCheckedYet(template),
     );
   }

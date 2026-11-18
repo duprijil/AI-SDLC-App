@@ -3,6 +3,11 @@ import type { ChangeActionDTO, ChangeActionResultDTO } from "@/cockpit/models/ch
 import type { ChangePromptRequestDTO } from "@/cockpit/models/change_prompt";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
+import type {
+  StatusMovePreviewDTO,
+  StatusMoveRequestDTO,
+  StatusMoveResultDTO,
+} from "@/cockpit/models/status_move_action";
 import type { Unsubscribe } from "@/session/models/session_bridge";
 
 export const SPRINT_BOARD_BRIDGE_GLOBAL = "cockpitBoard";
@@ -17,6 +22,8 @@ export const SPRINT_BOARD_CHANNEL = Object.freeze({
   openExternal: "board:open-external",
   changeAction: "change:action",
   changePrompt: "change:prompt",
+  movePreview: "ticket:move-preview",
+  move: "ticket:move",
 });
 
 export interface AttentionChangeDTO {
@@ -35,6 +42,8 @@ export interface SprintBoardBridge {
   refreshTicket(ticketKey: string): Promise<TicketRefreshDTO>;
   runChangeAction(ticketKey: string, action: ChangeActionDTO): Promise<ChangeActionResultDTO>;
   buildPrompt(request: ChangePromptRequestDTO): Promise<string>;
+  previewStatusMove(request: StatusMoveRequestDTO): Promise<StatusMovePreviewDTO>;
+  moveStatus(request: StatusMoveRequestDTO): Promise<StatusMoveResultDTO>;
   openInTracker(ticketKey: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   onProgress(listener: (progress: RefreshProgressDTO) => void): Unsubscribe;

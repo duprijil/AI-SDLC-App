@@ -21,6 +21,7 @@ export interface MyTicketsScreenProps {
   readonly onRefresh: () => void;
   readonly onOpenTicket: (ticketKey: string) => void;
   readonly onBlockClick: (ticketKey: string) => TicketCardProps["onBlockClick"];
+  readonly onMoveClick: (ticketKey: string) => TicketCardProps["onMoveClick"];
 }
 
 function EmptyState({ board, isRefreshing }: Pick<MyTicketsScreenProps, "board" | "isRefreshing">): ReactElement {
@@ -38,6 +39,7 @@ export function MyTicketsScreen({
   onRefresh,
   onOpenTicket,
   onBlockClick,
+  onMoveClick,
 }: MyTicketsScreenProps): ReactElement {
   const [filter, setFilter] = useState<AttentionFilter>("all");
   const allCards = board?.cards ?? [];
@@ -84,6 +86,7 @@ export function MyTicketsScreen({
               isMorphing={card.ticketKey === morphingTicketKey}
               onOpen={onOpenTicket}
               onBlockClick={onBlockClick(card.ticketKey)}
+              onMoveClick={onMoveClick(card.ticketKey)}
             />
           ))
         )}

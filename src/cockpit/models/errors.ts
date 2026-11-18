@@ -24,6 +24,10 @@ export class PipelineBoardMismatchError extends CockpitConfigurationError {
   override readonly name: string = "PipelineBoardMismatchError";
 }
 
+export class InvalidStatusMoveError extends CockpitError {
+  override readonly name: string = "InvalidStatusMoveError";
+}
+
 export class FlowCacheError extends CockpitError {
   override readonly name: string = "FlowCacheError";
 }

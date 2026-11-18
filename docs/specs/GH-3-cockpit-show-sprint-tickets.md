@@ -1,7 +1,7 @@
 # Show my sprint tickets on the board (M1)
 
 **Ticket:** GH-3
-**Status:** Implemented
+**Status:** Done
 **Domains:** pipeline (new), ticket (new), cockpit, session, core
 
 ## Context
@@ -16,21 +16,21 @@ M0 proved that Claude Code runs inside the app. M1 is the first real screen from
 
 ## Acceptance criteria
 
-- [ ] With `ACTIVE_PROJECT` pointing to a valid project and Jira credentials in `.env.secrets`, the app opens on **My tickets** and shows every ticket that matches the project's `tracker.scope` JQL, except tickets in `tracker.hide_statuses`.
-- [ ] Each card shows the key, the title, the Jira status as a pill, and a graph with the board's columns in Jira's order.
-- [ ] In each graph, the ticket's column is highlighted, earlier columns show "✓", and later columns show "not checked". Every column draws its block flow from `pipeline.yaml`, top to bottom. An `each_change` level is drawn as one stacked block marked "× each change". A board column with no entry in `pipeline.yaml` is drawn empty.
-- [ ] Cards are sorted by column, the furthest column first, then by key.
-- [ ] On the second launch, the list from the last successful fetch appears straight away, marked "From cache · hh:mm". The app then fetches from Jira and replaces it, marked "Refreshed · hh:mm".
-- [ ] **↻ Refresh** fetches from Jira again and updates the list and the time.
-- [ ] If Jira fails (bad credentials, no network, unknown board), a banner names the reason. The cached list stays visible.
-- [ ] If `.env.config`, `.env.secrets`, `project.yaml` or `pipeline.yaml` is missing a value or invalid, the app shows one error dialog listing every problem (file, field, reason), then quits. A `pipeline.yaml` column key that doesn't match any board column counts as a problem.
-- [ ] Clicking a card animates into the **Cockpit** for that ticket: a slim list on the left (key and title, current ticket selected), a header (← back, key, title, status pill, ↻, ↗), the graph, and a Claude Code terminal running in `~/.ticket-cockpit/workspaces/<KEY>`.
-- [ ] Choosing another ticket in the list switches the graph and terminal. Each ticket keeps its own running session, and coming back to it shows its recent output.
-- [ ] **←** animates back to My tickets, scrolled to the ticket that was open.
-- [ ] **↗** opens the ticket in Jira in the default browser.
-- [ ] Quitting the app stops every Claude Code session.
-- [ ] All of `projects/` is ignored by git.
-- [ ] `make check` passes.
+- [x] With `ACTIVE_PROJECT` pointing to a valid project and Jira credentials in `.env.secrets`, the app opens on **My tickets** and shows every ticket that matches the project's `tracker.scope` JQL, except tickets in `tracker.hide_statuses`.
+- [x] Each card shows the key, the title, the Jira status as a pill, and a graph with the board's columns in Jira's order.
+- [x] In each graph, the ticket's column is highlighted, earlier columns show "✓", and later columns show "not checked". Every column draws its block flow from `pipeline.yaml`, top to bottom. An `each_change` level is drawn as one stacked block marked "× each change". A board column with no entry in `pipeline.yaml` is drawn empty.
+- [x] Cards are sorted by column, the furthest column first, then by key.
+- [x] On the second launch, the list from the last successful fetch appears straight away, marked "From cache · hh:mm". The app then fetches from Jira and replaces it, marked "Refreshed · hh:mm".
+- [x] **↻ Refresh** fetches from Jira again and updates the list and the time.
+- [x] If Jira fails (bad credentials, no network, unknown board), a banner names the reason. The cached list stays visible.
+- [x] If `.env.config`, `.env.secrets`, `project.yaml` or `pipeline.yaml` is missing a value or invalid, the app shows one error dialog listing every problem (file, field, reason), then quits. A `pipeline.yaml` column key that doesn't match any board column counts as a problem.
+- [x] Clicking a card animates into the **Cockpit** for that ticket: a slim list on the left (key and title, current ticket selected), a header (← back, key, title, status pill, ↻, ↗), the graph, and a Claude Code terminal running in `~/.ticket-cockpit/workspaces/<KEY>`.
+- [x] Choosing another ticket in the list switches the graph and terminal. Each ticket keeps its own running session, and coming back to it shows its recent output.
+- [x] **←** animates back to My tickets, scrolled to the ticket that was open.
+- [x] **↗** opens the ticket in Jira in the default browser.
+- [x] Quitting the app stops every Claude Code session.
+- [x] All of `projects/` is ignored by git.
+- [x] `make check` passes.
 
 ## Out of scope
 

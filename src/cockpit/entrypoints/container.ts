@@ -7,10 +7,12 @@ import { type AgentActivity, Attention } from "@/cockpit/models/attention";
 import { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
 import { BuildChangePrompt } from "@/cockpit/use_cases/build_change_prompt";
+import { PreviewStatusMove } from "@/cockpit/use_cases/preview_status_move";
 import { ReassessAttention } from "@/cockpit/use_cases/reassess_attention";
 import { RefreshSprintBoard } from "@/cockpit/use_cases/refresh_sprint_board";
 import { RefreshTicketFlows } from "@/cockpit/use_cases/refresh_ticket_flows";
 import { RunChangeAction } from "@/cockpit/use_cases/run_change_action";
+import { RunStatusMove } from "@/cockpit/use_cases/run_status_move";
 import { ShowCachedSprintBoard } from "@/cockpit/use_cases/show_cached_sprint_board";
 import {
   loadProjectConfig,
@@ -117,6 +119,27 @@ export class CockpitContainer {
       this.#changeContainer.updateChangeBranch(),
       this.#changeContainer.replyToThread(),
       this.#projectDefinition.project.code.mergeMethod,
+    );
+  }
+
+  previewStatusMove(): PreviewStatusMove {
+    return new PreviewStatusMove(
+      this.#ticketContainer.readCachedSprint(),
+      this.#ticketContainer.findStatusTransition(),
+      this.#projectDefinition.project.projectKey,
+    );
+  }
+
+  runStatusMove(): RunStatusMove {
+    return new RunStatusMove(
+      {
+        readCachedSprint: this.#ticketContainer.readCachedSprint(),
+        moveTicket: this.#ticketContainer.moveTicket(),
+        refreshSprintBoard: this.refreshSprintBoard(),
+        refreshTicketFlows: this.refreshTicketFlows(),
+        flowCache: this.#flowCache,
+      },
+      this.#projectDefinition.project.projectKey,
     );
   }
 

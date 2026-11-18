@@ -1,7 +1,7 @@
 # Check pull requests, refresh column by column, act on changes (M2)
 
 **Ticket:** GH-4
-**Status:** Implemented
+**Status:** Done
 **Domains:** change (new), cockpit, ticket, pipeline, session
 
 ## Context
@@ -18,10 +18,10 @@ M1 shows each ticket as the board's columns with their block flows, but checks n
 
 ### Changes
 
-- [ ] A **change** is a PR in one of the project's repos (`repos[].github`) whose title or branch matches `code.link.key_pattern` and contains the ticket key. Open PRs count, and so do PRs merged in the last `code.link.merged_days` days.
-- [ ] An `each_change` level shows one block per change, labelled `#<number> <repo>`. With no change yet, it shows one "No PR yet" block.
-- [ ] A change block in a `change.ready` level (In Progress) shows one of: **none**, **draft**, **CI failing**, **ready** (done).
-- [ ] A change block in a `change.merged` level (Code Review) shows the first state that applies, in this order:
+- [x] A **change** is a PR in one of the project's repos (`repos[].github`) whose title or branch matches `code.link.key_pattern` and contains the ticket key. Open PRs count, and so do PRs merged in the last `code.link.merged_days` days.
+- [x] An `each_change` level shows one block per change, labelled `#<number> <repo>`. With no change yet, it shows one "No PR yet" block.
+- [x] A change block in a `change.ready` level (In Progress) shows one of: **none**, **draft**, **CI failing**, **ready** (done).
+- [x] A change block in a `change.merged` level (Code Review) shows the first state that applies, in this order:
 
   | State | Rule |
   |---|---|
@@ -33,23 +33,23 @@ M1 shows each ticket as the board's columns with their block flows, but checks n
   | **approved** | the review decision is approved and checks pass |
   | **in review** | anything else |
 
-- [ ] Bots never cause **feedback**, unless they have an open thread where they spoke last.
-- [ ] A `tracker` block is done when the ticket's column is after the block's column, or when the ticket is in the last column and the block is there.
-- [ ] `deploy`, `attest` and `prompt` blocks show "checked from M3/M4". They don't count as unfinished, so they never stop a refresh.
+- [x] Bots never cause **feedback**, unless they have an open thread where they spoke last.
+- [x] A `tracker` block is done when the ticket's column is after the block's column, or when the ticket is in the last column and the block is there.
+- [x] `deploy`, `attest` and `prompt` blocks show "checked from M3/M4". They don't count as unfinished, so they never stop a refresh.
 
 ### Refresh
 
-- [ ] **↻ Refresh** on a ticket checks its columns from left to right and, inside a column, its levels from top to bottom. The blocks of one level are checked in parallel.
-- [ ] The refresh stops after the first column with an unfinished block, or after the ticket's status column, whichever comes first. Later columns show "not checked", and nothing is fetched for them.
-- [ ] While it runs, the graph shows it live: blocks waiting to be checked are dimmed, the level being checked glows, and the header names the column and level. When it ends, the header shows "Stopped at <column> · hh:mm" or "Checked through <status column> · hh:mm".
-- [ ] **Refresh all** on My tickets first refreshes the sprint from Jira (as in M1), then the tickets, at most 4 at a time, each card animating its own refresh.
-- [ ] When the app opens, My tickets shows the last board and block states from the cache at once, then runs **Refresh all**.
-- [ ] Each column header shows "<done> of <total> done". The gate after the ticket's status column shows the same count, turns blue ("ready") when its column is complete, and does nothing when clicked (status moves arrive in M3).
-- [ ] If GitHub fails (bad token, no network, rate limit), the affected blocks show "could not check" with the reason, the refresh goes on with the other blocks, and ● Live turns amber.
+- [x] **↻ Refresh** on a ticket checks its columns from left to right and, inside a column, its levels from top to bottom. The blocks of one level are checked in parallel.
+- [x] The refresh stops after the first column with an unfinished block, or after the ticket's status column, whichever comes first. Later columns show "not checked", and nothing is fetched for them.
+- [x] While it runs, the graph shows it live: blocks waiting to be checked are dimmed, the level being checked glows, and the header names the column and level. When it ends, the header shows "Stopped at <column> · hh:mm" or "Checked through <status column> · hh:mm".
+- [x] **Refresh all** on My tickets first refreshes the sprint from Jira (as in M1), then the tickets, at most 4 at a time, each card animating its own refresh.
+- [x] When the app opens, My tickets shows the last board and block states from the cache at once, then runs **Refresh all**.
+- [x] Each column header shows "<done> of <total> done". The gate after the ticket's status column shows the same count, turns blue ("ready") when its column is complete, and does nothing when clicked (status moves arrive in M3).
+- [x] If GitHub fails (bad token, no network, rate limit), the affected blocks show "could not check" with the reason, the refresh goes on with the other blocks, and ● Live turns amber.
 
 ### Actions
 
-- [ ] Clicking a change block opens a popover with the actions for its state:
+- [x] Clicking a change block opens a popover with the actions for its state:
 
   | State | Actions |
   |---|---|
@@ -62,13 +62,13 @@ M1 shows each ticket as the board's columns with their block flows, but checks n
   | approved | merge |
   | in review / merged | open PR · copy link |
 
-- [ ] **Merge**, **Update branch** and **Reply** need a confirm in the popover, which shows exactly what will happen. Merge uses `code.merge.method` and re-checks the PR live first. If it's no longer approved and clean, the merge is refused with the reason.
-- [ ] A **▶ prompt** action opens the ticket in the Cockpit (starting its session if needed) and pastes the prompt into Claude Code once the session reports idle. The prompt contains the ticket key and title, the PR link, and (for feedback) the open threads' text.
-- [ ] After an action, only that ticket is refreshed again.
+- [x] **Merge**, **Update branch** and **Reply** need a confirm in the popover, which shows exactly what will happen. Merge uses `code.merge.method` and re-checks the PR live first. If it's no longer approved and clean, the merge is refused with the reason.
+- [x] A **▶ prompt** action opens the ticket in the Cockpit (starting its session if needed) and pastes the prompt into Claude Code once the session reports idle. The prompt contains the ticket key and title, the PR link, and (for feedback) the open threads' text.
+- [x] After an action, only that ticket is refreshed again.
 
 ### Attention
 
-- [ ] Every ticket gets one attention state, shown as the list dot and the card badge:
+- [x] Every ticket gets one attention state, shown as the list dot and the card badge:
 
   | State | When |
   |---|---|
@@ -78,12 +78,12 @@ M1 shows each ticket as the board's columns with their block flows, but checks n
   | **Waiting** | none of the above, and the ticket isn't in the last column |
   | **Done** | the ticket is in the last column |
 
-- [ ] My tickets has the filters All, Needs you, Agent working, Waiting and Done, each with its count, and sorts cards by attention (Failure first), then by column.
+- [x] My tickets has the filters All, Needs you, Agent working, Waiting and Done, each with its count, and sorts cards by attention (Failure first), then by column.
 
 ### Configuration
 
-- [ ] `GITHUB_TOKEN` in `.env.secrets` is required. Every repo in `project.yaml` needs `github: owner/name`. `code.link.key_pattern` must be a valid regular expression. Every `change` block needs `done_when: change.ready` or `change.merged`, and must sit in an `each_change` level. Problems show in the startup dialog, as in M1.
-- [ ] `make check` passes.
+- [x] `GITHUB_TOKEN` in `.env.secrets` is required. Every repo in `project.yaml` needs `github: owner/name`. `code.link.key_pattern` must be a valid regular expression. Every `change` block needs `done_when: change.ready` or `change.merged`, and must sit in an `each_change` level. Problems show in the startup dialog, as in M1.
+- [x] `make check` passes.
 
 ## Out of scope
 

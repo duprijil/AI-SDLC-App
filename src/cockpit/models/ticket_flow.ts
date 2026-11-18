@@ -1,9 +1,10 @@
 import { Attention, type AttentionKind } from "@/cockpit/models/attention";
 import { BlockState, type BlockStateDTO } from "@/cockpit/models/block_state";
+import { ColumnMove, type ColumnMoveDTO } from "@/cockpit/models/column_move";
 
 export type ColumnFlowState = "passed" | "current" | "stopped" | "unchecked";
 
-export type GateState = "passed" | "pending" | "ready" | "locked";
+export type GateState = "passed" | "pending" | "ready" | "move_back" | "locked";
 
 export interface LevelFlowDTO {
   readonly runsPerChange: boolean;
@@ -22,6 +23,7 @@ export interface GateDTO {
   readonly state: GateState;
   readonly doneCount: number;
   readonly totalCount: number;
+  readonly moveTo: ColumnMoveDTO | null;
 }
 
 export interface TicketFlowDTO {
@@ -64,16 +66,28 @@ function columnState(
   return isComplete(checked) ? "passed" : "stopped";
 }
 
-function gateState(position: number, parts: TicketFlowPartsDTO, checked: CheckedColumnDTO | undefined): GateState {
+interface GateMove {
+  readonly state: GateState;
+  readonly moveTo: ColumnMoveDTO | null;
+}
+
+function gateMove(position: number, parts: TicketFlowPartsDTO, checked: CheckedColumnDTO | undefined): GateMove {
   const ticketColumnIndex = parts.ticketColumnIndex ?? -1;
   if (checked === undefined || position > ticketColumnIndex) {
-    return "locked";
+    return { state: "locked", moveTo: null };
   }
   if (!isComplete(checked)) {
-    return "pending";
+    return position < ticketColumnIndex
+      ? { state: "move_back", moveTo: ColumnMove.backTo(position) }
+      : { state: "pending", moveTo: null };
   }
-  return position === ticketColumnIndex ? "ready" : "passed";
+  if (position < ticketColumnIndex) {
+    return { state: "passed", moveTo: null };
+  }
+  return { state: "ready", moveTo: ColumnMove.forwardFrom(position, parts.columnKeys.length) };
 }
+
+const isMoveGate = (gate: GateDTO): boolean => gate.state === "ready" || gate.state === "move_back";
 
 export class TicketFlow {
   readonly #flow: TicketFlowDTO;
@@ -95,7 +109,7 @@ export class TicketFlow {
       };
     });
     const gates = columns.slice(0, -1).map((column, position): GateDTO => ({
-      state: gateState(position, parts, parts.checkedColumns[position]),
+      ...gateMove(position, parts, parts.checkedColumns[position]),
       doneCount: column.doneCount,
       totalCount: column.totalCount,
     }));
@@ -104,7 +118,7 @@ export class TicketFlow {
     const flowAttention = Attention.ofFlow({
       isInLastColumn: parts.ticketColumnIndex === parts.columnKeys.length - 1,
       hasFailure: allBlocks.some((block) => BlockState.isFailure(block)),
-      needsYou: allBlocks.some((block) => BlockState.needsYou(block)) || gates.some((gate) => gate.state === "ready"),
+      needsYou: allBlocks.some((block) => BlockState.needsYou(block)) || gates.some(isMoveGate),
     });
     return new TicketFlow({
       ticketKey: parts.ticketKey,

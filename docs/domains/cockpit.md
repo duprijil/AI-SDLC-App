@@ -13,6 +13,9 @@ Combined domain, named after the product. It starts the desktop app, joins the `
 | Refresh | Column by column, level by level, with early stop. Progress events stream to the renderer |
 | Attention | `failure`, `needs_you`, `agent_working`, `waiting` or `done`, from the flow combined with the session's hook status |
 | Column state | For one card: `passed` (before the ticket's column), `current`, or `unchecked` (after it; M1 checks nothing yet) |
+| Gate | The arrow between two columns: `passed`, `pending` (n/m), `ready` (the status column is complete), `move_back` (an earlier column is no longer complete) or `locked`. Ready and move-back gates carry a column move |
+| Column move | A direction (`forward` or `back`) and a target column index. Gates and the open tracker block in the status column carry one |
+| Status move | Moving the ticket's Jira status to a column, from a gate or a tracker block, after a preview and a confirm |
 | Desktop app | The Electron main process: the window, the hook server and the IPC handlers |
 | Renderer | The window's web page: React screens and the xterm.js terminal |
 | Preload | The script that exposes the session and sprint-board bridges to the renderer |
@@ -34,6 +37,7 @@ The renderer's view of "the container" is the two bridges. Each bridge call runs
 - Show the cached board and flows first, then refresh everything: Jira, then every ticket's flow, at most 4 tickets at a time.
 - Refresh a ticket from left to right, and inside a column from top to bottom. Stop after the first column with an unfinished block, or after the ticket's status column. `deploy`, `attest` and `prompt` blocks are "not checked yet" (until M3/M4) and never stop a refresh.
 - Run the change actions from the block popover (merge, update branch, reply), each behind a confirm, then refresh that ticket.
+- Move a ticket's status from a ready gate, a move-back gate, or the open tracker block of its status column. The popover previews the Jira transition; the move runs after a confirm, then the sprint is fetched again and that ticket's flow refreshes.
 - Build the built-in prompts (build ticket, fix CI, resolve conflict, address feedback), and hand them to the ticket's session once it reports idle.
 - Recompute a ticket's attention whenever its session's hook status changes.
 - Sort cards by column, furthest first, then by key.
@@ -45,4 +49,6 @@ The renderer's view of "the container" is the two bridges. Each bridge call runs
 - The window has `contextIsolation` and `sandbox` on, and `nodeIntegration` off.
 - Quitting the app stops every agent session and the hook server.
 - Nothing imports `cockpit`, except the root files that delegate to it.
+- A status move goes one column forward, or back to an earlier column, never further forward. The target comes from the cached sprint, so the move acts on what the user saw.
+- A ticket with a ready or move-back gate is "Needs you". An open tracker block alone (a not-started ticket) is not.
 - Tracker values reach the `ticket` domain as plain values (`SprintQuery`, site URL), because `ticket` can't import `pipeline`.

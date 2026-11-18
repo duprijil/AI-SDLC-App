@@ -8,7 +8,7 @@ import type { FlowCachePort } from "@/cockpit/adapters/flow_cache_port";
 import { FlowCacheError } from "@/cockpit/models/errors";
 import type { TicketFlowDTO } from "@/cockpit/models/ticket_flow";
 
-const FLOW_FORMAT_VERSION = 1;
+const FLOW_FORMAT_VERSION = 2;
 const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS ticket_flow (
   project_key TEXT NOT NULL,
   ticket_key TEXT NOT NULL,

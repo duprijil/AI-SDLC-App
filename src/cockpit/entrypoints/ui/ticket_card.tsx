@@ -12,9 +12,18 @@ export interface TicketCardProps {
   readonly isMorphing: boolean;
   readonly onOpen: (ticketKey: string) => void;
   readonly onBlockClick: TicketGraphProps["onBlockClick"];
+  readonly onMoveClick: TicketGraphProps["onMoveClick"];
 }
 
-export function TicketCard({ card, columns, scan, isMorphing, onOpen, onBlockClick }: TicketCardProps): ReactElement {
+export function TicketCard({
+  card,
+  columns,
+  scan,
+  isMorphing,
+  onOpen,
+  onBlockClick,
+  onMoveClick,
+}: TicketCardProps): ReactElement {
   return (
     <div
       role="button"
@@ -39,7 +48,7 @@ export function TicketCard({ card, columns, scan, isMorphing, onOpen, onBlockCli
         <span className="pill">{card.statusName.toUpperCase()}</span>
       </div>
       <div style={{ viewTransitionName: isMorphing ? "ticket-graph" : "none" }}>
-        <TicketGraph columns={columns} card={card} scan={scan} onBlockClick={onBlockClick} />
+        <TicketGraph columns={columns} card={card} scan={scan} onBlockClick={onBlockClick} onMoveClick={onMoveClick} />
       </div>
     </div>
   );

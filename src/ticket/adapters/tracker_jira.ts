@@ -3,8 +3,16 @@ import { z } from "zod";
 import type { SecretText } from "@/core/models/secret_text";
 import type { TrackerPort } from "@/ticket/adapters/tracker_port";
 import { Board } from "@/ticket/models/board";
-import { BoardNotFoundError, TrackerAuthError, TrackerUnavailableError } from "@/ticket/models/errors";
+import {
+  BoardNotFoundError,
+  type TicketError,
+  TicketNotFoundError,
+  TrackerAuthError,
+  TrackerUnavailableError,
+  TransitionRefusedError,
+} from "@/ticket/models/errors";
 import { Ticket } from "@/ticket/models/ticket";
+import { Transition } from "@/ticket/models/transition";
 
 const REQUEST_TIMEOUT_MILLISECONDS = 15_000;
 const PAGE_SIZE = 100;
@@ -14,6 +22,8 @@ const STATUS_BAD_REQUEST = 400;
 const STATUS_UNAUTHORIZED = 401;
 const STATUS_FORBIDDEN = 403;
 const STATUS_NOT_FOUND = 404;
+const STATUS_NO_CONTENT = 204;
+const TRANSITION_REFUSAL_STATUSES: readonly number[] = [400, 409, 422];
 
 const boardConfigurationSchema = z.object({
   columnConfig: z.object({
@@ -21,27 +31,41 @@ const boardConfigurationSchema = z.object({
   }),
 });
 
-const searchPageSchema = z.object({
-  issues: z.array(
+const issueSchema = z.object({
+  key: z.string(),
+  fields: z.object({
+    summary: z.string().nullish(),
+    status: z.object({ id: z.string(), name: z.string() }),
+  }),
+});
+
+const transitionsSchema = z.object({
+  transitions: z.array(
     z.object({
-      key: z.string(),
-      fields: z.object({
-        summary: z.string().nullish(),
-        status: z.object({ id: z.string(), name: z.string() }),
-      }),
+      id: z.string(),
+      name: z.string(),
+      to: z.object({ id: z.string(), name: z.string() }),
     }),
   ),
+});
+
+const searchPageSchema = z.object({
+  issues: z.array(issueSchema),
   nextPageToken: z.string().nullish(),
   isLast: z.boolean().optional(),
 });
 
-const errorMessagesSchema = z.object({ errorMessages: z.array(z.string()).default([]) });
+const errorMessagesSchema = z.object({
+  errorMessages: z.array(z.string()).default([]),
+  errors: z.record(z.string(), z.string()).default({}),
+});
 
 interface JiraRequest {
   readonly path: string;
   readonly method: "GET" | "POST";
   readonly body?: unknown;
-  readonly notFoundSubject: string;
+  readonly notFound: () => TicketError;
+  readonly refusal?: (reason: string) => TicketError;
 }
 
 export class TrackerJira implements TrackerPort {
@@ -59,7 +83,7 @@ export class TrackerJira implements TrackerPort {
     const answer = await this.#request({
       path: `/rest/agile/1.0/board/${String(boardId)}/configuration`,
       method: "GET",
-      notFoundSubject: `board ${String(boardId)}`,
+      notFound: () => new BoardNotFoundError(`Jira has no board ${String(boardId)}`),
     });
     const configuration = this.#shape(boardConfigurationSchema, answer);
     return Board.create(
@@ -84,6 +108,41 @@ export class TrackerJira implements TrackerPort {
     return tickets;
   }
 
+  async ticket(ticketKey: string): Promise<Ticket> {
+    const answer = await this.#request({
+      path: `/rest/api/3/issue/${encodeURIComponent(ticketKey)}?fields=${SEARCH_FIELDS.join(",")}`,
+      method: "GET",
+      notFound: () => new TicketNotFoundError(`Jira has no ticket ${ticketKey}, or it's not visible to you`),
+    });
+    return this.#toTicket(this.#shape(issueSchema, answer));
+  }
+
+  async transitions(ticketKey: string): Promise<readonly Transition[]> {
+    const answer = await this.#request({
+      path: `/rest/api/3/issue/${encodeURIComponent(ticketKey)}/transitions`,
+      method: "GET",
+      notFound: () => new TicketNotFoundError(`Jira has no ticket ${ticketKey}, or it's not visible to you`),
+    });
+    return this.#shape(transitionsSchema, answer).transitions.map((transition) =>
+      Transition.create({
+        transitionId: transition.id,
+        name: transition.name,
+        targetStatusId: transition.to.id,
+        targetStatusName: transition.to.name,
+      }),
+    );
+  }
+
+  async transition(ticketKey: string, transitionId: string): Promise<void> {
+    await this.#request({
+      path: `/rest/api/3/issue/${encodeURIComponent(ticketKey)}/transitions`,
+      method: "POST",
+      body: { transition: { id: transitionId } },
+      notFound: () => new TicketNotFoundError(`Jira has no ticket ${ticketKey}, or it's not visible to you`),
+      refusal: (reason) => new TransitionRefusedError(`Jira refused to move ${ticketKey}: ${reason}`),
+    });
+  }
+
   async #searchPage(scopeJql: string, nextPageToken: string | null): Promise<z.infer<typeof searchPageSchema>> {
     const answer = await this.#request({
       path: "/rest/api/3/search/jql",
@@ -94,12 +153,12 @@ export class TrackerJira implements TrackerPort {
         maxResults: PAGE_SIZE,
         ...(nextPageToken === null ? {} : { nextPageToken }),
       },
-      notFoundSubject: "search API",
+      notFound: () => new BoardNotFoundError("Jira has no search API"),
     });
     return this.#shape(searchPageSchema, answer);
   }
 
-  #toTicket(issue: z.infer<typeof searchPageSchema>["issues"][number]): Ticket {
+  #toTicket(issue: z.infer<typeof issueSchema>): Ticket {
     return Ticket.create({
       ticketKey: issue.key,
       title: issue.fields.summary ?? "",
@@ -110,23 +169,37 @@ export class TrackerJira implements TrackerPort {
 
   async #request(request: JiraRequest): Promise<unknown> {
     const response = await this.#send(request);
-    if (response.status === STATUS_UNAUTHORIZED || response.status === STATUS_FORBIDDEN) {
-      throw new TrackerAuthError("Jira rejected the credentials in .env.secrets (JIRA_EMAIL, JIRA_API_TOKEN)");
+    const failure = await this.#failureOf(response, request);
+    if (failure !== null) {
+      throw failure;
     }
-    if (response.status === STATUS_NOT_FOUND) {
-      throw new BoardNotFoundError(`Jira has no ${request.notFoundSubject}`);
-    }
-    if (response.status === STATUS_BAD_REQUEST) {
-      throw new TrackerUnavailableError(`Jira rejected the request: ${await this.#errorMessages(response)}`);
-    }
-    if (!response.ok) {
-      throw new TrackerUnavailableError(`Jira answered with status ${String(response.status)}`);
+    if (response.status === STATUS_NO_CONTENT) {
+      return null;
     }
     try {
       return await response.json();
     } catch (cause) {
       throw new TrackerUnavailableError("Jira sent an answer that isn't JSON", { cause });
     }
+  }
+
+  async #failureOf(response: Response, request: JiraRequest): Promise<TicketError | null> {
+    if (response.status === STATUS_UNAUTHORIZED || response.status === STATUS_FORBIDDEN) {
+      return new TrackerAuthError("Jira rejected the credentials in .env.secrets (JIRA_EMAIL, JIRA_API_TOKEN)");
+    }
+    if (response.status === STATUS_NOT_FOUND) {
+      return request.notFound();
+    }
+    if (request.refusal !== undefined && TRANSITION_REFUSAL_STATUSES.includes(response.status)) {
+      return request.refusal(await this.#errorMessages(response));
+    }
+    if (response.status === STATUS_BAD_REQUEST) {
+      return new TrackerUnavailableError(`Jira rejected the request: ${await this.#errorMessages(response)}`);
+    }
+    if (!response.ok) {
+      return new TrackerUnavailableError(`Jira answered with status ${String(response.status)}`);
+    }
+    return null;
   }
 
   async #send(request: JiraRequest): Promise<Response> {
@@ -148,9 +221,12 @@ export class TrackerJira implements TrackerPort {
 
   async #errorMessages(response: Response): Promise<string> {
     const parsed = errorMessagesSchema.safeParse(await response.json().catch(() => ({})));
-    return parsed.success && parsed.data.errorMessages.length > 0
-      ? parsed.data.errorMessages.join("; ")
-      : "no reason given";
+    if (!parsed.success) {
+      return "no reason given";
+    }
+    const fieldMessages = Object.entries(parsed.data.errors).map(([field, message]) => `${field}: ${message}`);
+    const messages = [...parsed.data.errorMessages, ...fieldMessages];
+    return messages.length > 0 ? messages.join("; ") : "no reason given";
   }
 
   #shape<Schema extends z.ZodType>(schema: Schema, answer: unknown): z.infer<Schema> {
