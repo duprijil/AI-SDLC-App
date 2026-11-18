@@ -63,7 +63,12 @@ const sprintBoardBridge: SprintBoardBridge = {
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.refreshTicket, ticketKey)) as TicketRefreshDTO,
   runChangeAction: async (ticketKey, action) =>
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changeAction, ticketKey, action)) as ChangeActionResultDTO,
-  buildPrompt: async (request) => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changePrompt, request)) as string,
+  buildPrompt: async (request) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changePrompt, request)) as readonly string[],
+  recordCheckpoint: async (request) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.checkpoint, request)) as ChangeActionResultDTO,
+  writeDefaultPrompts: async () =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.writeDefaultPrompts)) as readonly string[],
   previewStatusMove: async (request) =>
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.movePreview, request)) as StatusMovePreviewDTO,
   moveStatus: async (request) => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.move, request)) as StatusMoveResultDTO,

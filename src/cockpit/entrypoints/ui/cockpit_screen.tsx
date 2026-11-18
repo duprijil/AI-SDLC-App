@@ -12,6 +12,7 @@ export interface PromptHandOff {
   readonly ticketKey: string;
   readonly promptText: string;
   readonly hasTimedOut: boolean;
+  readonly remainingPrompts: readonly string[];
 }
 
 export interface CockpitScreenProps {

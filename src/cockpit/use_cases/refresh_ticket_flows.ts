@@ -15,6 +15,8 @@ import { type CheckedColumnDTO, type LevelFlowDTO, TicketFlow, type TicketFlowDT
 import type { CheckTicketEnvironments } from "@/cockpit/use_cases/check_ticket_environments";
 import type { BlockTemplateDTO, FlowLevelDTO } from "@/pipeline/models/pipeline";
 import type { ProjectDefinition } from "@/pipeline/models/project_definition";
+import { SessionError } from "@/session/models/errors";
+import type { FindCheckpoint } from "@/session/use_cases/find_checkpoint";
 
 const MAXIMUM_PARALLEL_TICKETS = 4;
 
@@ -73,6 +75,7 @@ export interface RefreshSteps {
   readonly findTicketChanges: FindTicketChanges;
   readonly checkTicketEnvironments: CheckTicketEnvironments;
   readonly findAttestation: FindAttestation;
+  readonly findCheckpoint: FindCheckpoint;
   readonly flowCache: FlowCachePort;
 }
 
@@ -200,15 +203,22 @@ export class RefreshTicketFlows {
           );
         case "attest":
           return await this.#checkAttest(template, check);
+        case "prompt":
+          return this.#checkPrompt(template, check);
         default:
           return BlockState.notCheckedYet(template);
       }
     } catch (error) {
-      if (error instanceof ChangeError || error instanceof AttestationError) {
+      if (error instanceof ChangeError || error instanceof AttestationError || error instanceof SessionError) {
         return BlockState.changesUnavailable(template, error.message);
       }
       throw error;
     }
+  }
+
+  #checkPrompt(template: BlockTemplateDTO, check: TicketCheck): BlockStateDTO {
+    const checkpoint = this.#steps.findCheckpoint.execute(check.card.ticketKey, template.blockId);
+    return BlockState.forPrompt(template, checkpoint?.state === "done", checkpoint?.note ?? null);
   }
 
   async #checkAttest(template: BlockTemplateDTO, check: TicketCheck): Promise<BlockStateDTO> {

@@ -15,6 +15,9 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 | Column key | The snake_case board column name: "Code Review" → `code_review` |
 | Flow level | One step of a column's flow. Its blocks run in parallel. An `each_change` level holds one block that repeats once per change |
 | Block template | A block's id, type (`change`, `deploy`, `attest`, `tracker`, `prompt`) and title. The title defaults to the humanized id |
+| Prompt template | A Markdown file `projects/<name>/prompts/<file>.md` with `{{placeholder}}` values. Five defaults ship in code and are used when the file is missing |
+| Prompt actions | `actions.<state>: [ { session: prompts/<file>.md } ]` on a block; other action names are kept for later milestones and ignored |
+| Gate prompts | `gate.then: [ { session: prompts/<file>.md } ]` on a column, sent after a forward move out of it |
 | Project definition | A loaded project together with its pipeline |
 
 ## Responsibilities
@@ -35,4 +38,8 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 - A `deploy` block has `env`. An `attest` block has `pin: 'env("<env>").commits'` and `done_when: attested`. That env exists on at least one repo.
 - A repo with a `github_actions` env has `path`. `commit` is `run.head_sha`; the other sources are refused as not supported yet.
 - `same_as` points at an env of the same repo that has its own settings.
+- `actions` keys with prompts are states the block type has. Prompt names are `prompts/<file>.md`, never a path outside the project.
+- A `prompt` block has `prompt:`, and its `done_when` (if any) is `session.checkpoint(<kind>)`.
+- Every referenced template exists (as a file or a default) and uses only known placeholders; `{{change.*}}` only on change blocks.
+- Default templates are written only when missing, never over a file.
 - All of `projects/` is gitignored, because project files name real company systems. Nothing under it is committed.

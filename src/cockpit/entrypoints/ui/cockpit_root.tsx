@@ -11,9 +11,10 @@ import { MyTicketsScreen } from "@/cockpit/entrypoints/ui/my_tickets_screen";
 import { StatusMovePopover, type StatusMoveTarget } from "@/cockpit/entrypoints/ui/status_move_popover";
 import { useSprintBoard } from "@/cockpit/entrypoints/ui/use_sprint_board";
 import type { BlockStateDTO } from "@/cockpit/models/block_state";
-import type { PromptKind } from "@/cockpit/models/change_prompt";
 import type { ColumnMoveDTO } from "@/cockpit/models/column_move";
 import { CockpitError } from "@/cockpit/models/errors";
+import type { PromptKind, PromptRequestDTO } from "@/cockpit/models/prompt_request";
+import type { StatusMoveRequestDTO } from "@/cockpit/models/status_move_action";
 
 const ROOT_ELEMENT_ID = "root";
 
@@ -89,35 +90,66 @@ function CockpitApp(): ReactElement {
     [board, moveClickFor],
   );
 
-  const sendPrompt = useCallback(
-    (target: PopoverTarget, kind: PromptKind) => {
-      sprintBoardBridge()
-        .buildPrompt({
-          kind,
-          ticketKey: target.ticketKey,
-          ticketTitle: target.ticketTitle,
-          change: target.block.change,
-          threads: target.block.threads,
-          runUrls: target.block.deployLines.flatMap((line) =>
-            line.state === "failed" && line.runUrl !== null ? [line.runUrl] : [],
-          ),
-        })
-        .then((promptText) => {
-          setPromptHandOff({ ticketKey: target.ticketKey, promptText, hasTimedOut: false });
-          if (screen.name === "cockpit" && screen.ticketKey === target.ticketKey) {
-            return;
-          }
-          openTicket(target.ticketKey);
-        })
-        .catch(() => {
-          setPromptHandOff(null);
-        });
+  const handOffPrompts = useCallback(
+    async (request: PromptRequestDTO): Promise<string | null> => {
+      try {
+        const [promptText, ...remainingPrompts] = await sprintBoardBridge().buildPrompt(request);
+        if (promptText === undefined) {
+          return "There is no prompt to send";
+        }
+        setPromptHandOff({ ticketKey: request.ticketKey, promptText, hasTimedOut: false, remainingPrompts });
+        if (screen.name !== "cockpit" || screen.ticketKey !== request.ticketKey) {
+          openTicket(request.ticketKey);
+        }
+        return null;
+      } catch (error) {
+        return error instanceof Error ? error.message : "The prompt couldn't be built";
+      }
     },
     [openTicket, screen],
   );
 
+  const sendPrompt = useCallback(
+    (target: PopoverTarget, kind: PromptKind): Promise<string | null> =>
+      handOffPrompts({
+        kind,
+        ticketKey: target.ticketKey,
+        ticketTitle: target.ticketTitle,
+        change: target.block.change,
+        threads: target.block.threads,
+        runUrls: target.block.deployLines.flatMap((line) =>
+          line.state === "failed" && line.runUrl !== null ? [line.runUrl] : [],
+        ),
+        templateNames: target.block.promptTemplates,
+      }),
+    [handOffPrompts],
+  );
+
+  const moveStatus = useCallback(
+    async (request: StatusMoveRequestDTO): Promise<string | null> => {
+      const result = await sprintBoard.moveStatus(request);
+      if (result.failure === null && result.promptTemplates.length > 0) {
+        const card = board?.cards.find((boardCard) => boardCard.ticketKey === request.ticketKey);
+        return handOffPrompts({
+          kind: "block_prompt",
+          ticketKey: request.ticketKey,
+          ticketTitle: card?.title ?? "",
+          change: null,
+          threads: [],
+          runUrls: [],
+          templateNames: result.promptTemplates,
+        });
+      }
+      return result.failure;
+    },
+    [board, handOffPrompts, sprintBoard],
+  );
+
   const promptDelivered = useCallback(() => {
-    setPromptHandOff(null);
+    setPromptHandOff((current) => {
+      const [promptText, ...remainingPrompts] = current?.remainingPrompts ?? [];
+      return current === null || promptText === undefined ? null : { ...current, promptText, remainingPrompts };
+    });
   }, []);
 
   const promptTimedOut = useCallback(() => {
@@ -134,6 +166,7 @@ function CockpitApp(): ReactElement {
           }}
           onRunAction={sprintBoard.runChangeAction}
           onTickAttestation={sprintBoard.tickAttestation}
+          onRecordCheckpoint={sprintBoard.recordCheckpoint}
           onSendPrompt={sendPrompt}
         />
       )}
@@ -145,7 +178,7 @@ function CockpitApp(): ReactElement {
           onClose={() => {
             setMoveTarget(null);
           }}
-          onMove={sprintBoard.moveStatus}
+          onMove={moveStatus}
         />
       )}
     </>

@@ -1,7 +1,8 @@
 import type { AttentionKind } from "@/cockpit/models/attention";
 import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO, ChangeActionResultDTO } from "@/cockpit/models/change_action";
-import type { ChangePromptRequestDTO } from "@/cockpit/models/change_prompt";
+import type { CheckpointRequestDTO } from "@/cockpit/models/checkpoint_action";
+import type { PromptRequestDTO } from "@/cockpit/models/prompt_request";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import type {
@@ -26,6 +27,8 @@ export const SPRINT_BOARD_CHANNEL = Object.freeze({
   movePreview: "ticket:move-preview",
   move: "ticket:move",
   attestTick: "attest:tick",
+  checkpoint: "prompt:checkpoint",
+  writeDefaultPrompts: "prompts:write-defaults",
 });
 
 export interface AttentionChangeDTO {
@@ -43,7 +46,9 @@ export interface SprintBoardBridge {
   refreshAll(): Promise<SprintBoardDTO>;
   refreshTicket(ticketKey: string): Promise<TicketRefreshDTO>;
   runChangeAction(ticketKey: string, action: ChangeActionDTO): Promise<ChangeActionResultDTO>;
-  buildPrompt(request: ChangePromptRequestDTO): Promise<string>;
+  buildPrompt(request: PromptRequestDTO): Promise<readonly string[]>;
+  recordCheckpoint(request: CheckpointRequestDTO): Promise<ChangeActionResultDTO>;
+  writeDefaultPrompts(): Promise<readonly string[]>;
   previewStatusMove(request: StatusMoveRequestDTO): Promise<StatusMovePreviewDTO>;
   moveStatus(request: StatusMoveRequestDTO): Promise<StatusMoveResultDTO>;
   tickAttestation(request: AttestTickRequestDTO): Promise<ChangeActionResultDTO>;

@@ -3,10 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { sprintBoardBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
 import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
+import type { CheckpointRequestDTO } from "@/cockpit/models/checkpoint_action";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import type { AttentionChangeDTO } from "@/cockpit/models/sprint_board_bridge";
-import type { StatusMoveRequestDTO } from "@/cockpit/models/status_move_action";
+import type { StatusMoveRequestDTO, StatusMoveResultDTO } from "@/cockpit/models/status_move_action";
 
 export interface SprintBoardState {
   readonly board: SprintBoardDTO | null;
@@ -16,7 +17,8 @@ export interface SprintBoardState {
   readonly refreshAll: () => void;
   readonly refreshTicket: (ticketKey: string) => void;
   readonly runChangeAction: (ticketKey: string, action: ChangeActionDTO) => Promise<string | null>;
-  readonly moveStatus: (request: StatusMoveRequestDTO) => Promise<string | null>;
+  readonly moveStatus: (request: StatusMoveRequestDTO) => Promise<StatusMoveResultDTO>;
+  readonly recordCheckpoint: (request: CheckpointRequestDTO) => Promise<string | null>;
   readonly tickAttestation: (request: AttestTickRequestDTO) => Promise<string | null>;
 }
 
@@ -120,14 +122,20 @@ export function useSprintBoard(): SprintBoardState {
     return result.failure;
   }, []);
 
-  const moveStatus = useCallback(async (request: StatusMoveRequestDTO): Promise<string | null> => {
+  const recordCheckpoint = useCallback(async (request: CheckpointRequestDTO): Promise<string | null> => {
+    const result = await sprintBoardBridge().recordCheckpoint(request);
+    setBoard((current) => replaceCard(current, result.card));
+    return result.failure;
+  }, []);
+
+  const moveStatus = useCallback(async (request: StatusMoveRequestDTO): Promise<StatusMoveResultDTO> => {
     setRefreshingTicketKeys((keys) => toggled(keys, request.ticketKey, true));
     try {
       const result = await sprintBoardBridge().moveStatus(request);
       if (result.board !== null) {
         setBoard(result.board);
       }
-      return result.failure;
+      return result;
     } finally {
       setRefreshingTicketKeys((keys) => toggled(keys, request.ticketKey, false));
     }
@@ -169,5 +177,6 @@ export function useSprintBoard(): SprintBoardState {
     runChangeAction,
     moveStatus,
     tickAttestation,
+    recordCheckpoint,
   };
 }

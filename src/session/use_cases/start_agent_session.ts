@@ -1,11 +1,18 @@
 import type { AgentCliPort } from "@/session/adapters/agent_cli_port";
+import type { AgentTranscriptPort } from "@/session/adapters/agent_transcript_port";
 import type { HookSettingsPort } from "@/session/adapters/hook_settings_port";
 import type { PtyListener, PtyPort } from "@/session/adapters/pty_port";
+import type { SessionRecordPort } from "@/session/adapters/session_record_port";
 import type { SessionStorePort } from "@/session/adapters/session_store_port";
 import type { WorkspacePort } from "@/session/adapters/workspace_port";
 import { AgentSession } from "@/session/models/agent_session";
+import { SessionRecordError } from "@/session/models/errors";
 import type { HookEndpoint } from "@/session/models/hook_endpoint";
+import { SessionRecord, type SessionRecordDTO } from "@/session/models/session_record";
 import type { TerminalSize } from "@/session/models/terminal_size";
+
+const FAST_FAILURE_MILLISECONDS = 5_000;
+const RESUME_FAILED_NOTE = "\r\n\u001b[33mCouldn't resume the last session; started a new one.\u001b[0m\r\n";
 
 export interface StartAgentSessionRequest {
   readonly ticketKey: string;
@@ -14,53 +21,103 @@ export interface StartAgentSessionRequest {
   readonly listener: PtyListener;
 }
 
-export class StartAgentSession {
-  readonly #sessionStore: SessionStorePort;
-  readonly #terminal: PtyPort;
-  readonly #workspace: WorkspacePort;
-  readonly #hookSettings: HookSettingsPort;
-  readonly #agentCli: AgentCliPort;
+export interface SessionStartPorts {
+  readonly sessionStore: SessionStorePort;
+  readonly sessionRecords: SessionRecordPort;
+  readonly terminal: PtyPort;
+  readonly workspace: WorkspacePort;
+  readonly hookSettings: HookSettingsPort;
+  readonly agentCli: AgentCliPort;
+  readonly agentTranscript: AgentTranscriptPort;
+}
 
-  constructor(
-    sessionStore: SessionStorePort,
-    terminal: PtyPort,
-    workspace: WorkspacePort,
-    hookSettings: HookSettingsPort,
-    agentCli: AgentCliPort,
-  ) {
-    this.#sessionStore = sessionStore;
-    this.#terminal = terminal;
-    this.#workspace = workspace;
-    this.#hookSettings = hookSettings;
-    this.#agentCli = agentCli;
+interface Launch {
+  readonly request: StartAgentSessionRequest;
+  readonly sessionId: string;
+  readonly workspacePath: string;
+  readonly isResume: boolean;
+}
+
+export class StartAgentSession {
+  readonly #ports: SessionStartPorts;
+
+  constructor(ports: SessionStartPorts) {
+    this.#ports = ports;
   }
 
   execute(request: StartAgentSessionRequest): AgentSession {
-    const runningSession = this.#sessionStore.findActiveForTicket(request.ticketKey);
+    const runningSession = this.#ports.sessionStore.findActiveForTicket(request.ticketKey);
     if (runningSession !== null) {
-      this.#terminal.attach(runningSession.sessionId, this.#tracking(runningSession.sessionId, request.listener));
-      this.#terminal.resize(runningSession.sessionId, request.size);
+      this.#ports.terminal.attach(runningSession.sessionId, this.#tracking(runningSession.sessionId, request.listener));
+      this.#ports.terminal.resize(runningSession.sessionId, request.size);
       return runningSession;
     }
-    return this.#launch(request);
+    const workspacePath = this.#ports.workspace.prepare(request.ticketKey);
+    const record = this.#lastRecord(request.ticketKey);
+    if (
+      SessionRecord.canResume(record, workspacePath) &&
+      this.#ports.agentTranscript.exists(workspacePath, record.sessionId)
+    ) {
+      return this.#spawn({ request, sessionId: record.sessionId, workspacePath, isResume: true });
+    }
+    return this.#startFresh(request, workspacePath);
   }
 
-  #launch(request: StartAgentSessionRequest): AgentSession {
+  #startFresh(request: StartAgentSessionRequest, workspacePath: string): AgentSession {
     const sessionId = crypto.randomUUID();
-    const workspacePath = this.#workspace.prepare(request.ticketKey);
-    const settingsFilePath = this.#hookSettings.write(sessionId, request.hookEndpoint);
-    const session = AgentSession.start({ sessionId, ticketKey: request.ticketKey, workspacePath });
-    this.#sessionStore.save(session);
-    this.#terminal.spawn(
+    this.#saveRecord({
+      ticketKey: request.ticketKey,
+      sessionId,
+      workspacePath,
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+    });
+    return this.#spawn({ request, sessionId, workspacePath, isResume: false });
+  }
+
+  #spawn(launch: Launch): AgentSession {
+    const settingsFilePath = this.#ports.hookSettings.write(launch.sessionId, launch.request.hookEndpoint);
+    const session = AgentSession.start({
+      sessionId: launch.sessionId,
+      ticketKey: launch.request.ticketKey,
+      workspacePath: launch.workspacePath,
+    });
+    this.#ports.sessionStore.save(session);
+    const launchCommand = launch.isResume
+      ? this.#ports.agentCli.resumeCommand(launch.sessionId, settingsFilePath)
+      : this.#ports.agentCli.launchCommand(launch.sessionId, settingsFilePath);
+    const listener = launch.isResume
+      ? this.#resumeTracking(launch)
+      : this.#tracking(launch.sessionId, launch.request.listener);
+    this.#ports.terminal.spawn(
       {
-        sessionId,
-        launchCommand: this.#agentCli.launchCommand(sessionId, settingsFilePath),
-        workingDirectory: workspacePath,
-        size: request.size,
+        sessionId: launch.sessionId,
+        launchCommand,
+        workingDirectory: launch.workspacePath,
+        size: launch.request.size,
       },
-      this.#tracking(sessionId, request.listener),
+      listener,
     );
     return session;
+  }
+
+  #resumeTracking(launch: Launch): PtyListener {
+    const startedAt = Date.now();
+    const listener = launch.request.listener;
+    return {
+      onOutput: (chunk): void => {
+        listener.onOutput(chunk);
+      },
+      onExit: (exitCode): void => {
+        this.#markEnded(launch.sessionId);
+        if (exitCode !== 0 && Date.now() - startedAt < FAST_FAILURE_MILLISECONDS) {
+          listener.onOutput(RESUME_FAILED_NOTE);
+          this.#startFresh(launch.request, launch.workspacePath);
+          return;
+        }
+        listener.onExit(exitCode);
+      },
+    };
   }
 
   #tracking(sessionId: string, listener: PtyListener): PtyListener {
@@ -75,10 +132,31 @@ export class StartAgentSession {
     };
   }
 
+  #lastRecord(ticketKey: string): SessionRecordDTO | null {
+    try {
+      return this.#ports.sessionRecords.latestFor(ticketKey);
+    } catch (error) {
+      if (error instanceof SessionRecordError) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  #saveRecord(record: SessionRecordDTO): void {
+    try {
+      this.#ports.sessionRecords.save(record);
+    } catch (error) {
+      if (!(error instanceof SessionRecordError)) {
+        throw error;
+      }
+    }
+  }
+
   #markEnded(sessionId: string): void {
-    const session = this.#sessionStore.find(sessionId);
+    const session = this.#ports.sessionStore.find(sessionId);
     if (session !== null) {
-      this.#sessionStore.save(session.withStatus("ended"));
+      this.#ports.sessionStore.save(session.withStatus("ended"));
     }
   }
 }

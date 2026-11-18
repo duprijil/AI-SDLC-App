@@ -11,3 +11,7 @@ export class InvalidProjectConfigError extends PipelineError {
     this.problems = problems;
   }
 }
+
+export class PromptTemplateError extends PipelineError {
+  override readonly name: string = "PromptTemplateError";
+}

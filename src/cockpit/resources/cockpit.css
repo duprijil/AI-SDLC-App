@@ -979,3 +979,15 @@ button.blk:hover {
 .deploy-line.dl-waiting {
   border-left-color: var(--warn-bd);
 }
+
+.live-note {
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-left: 8px;
+}
+
+.checkpoint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

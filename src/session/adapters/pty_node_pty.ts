@@ -46,6 +46,10 @@ export class PtyNodePty implements PtyPort {
     this.#terminal(sessionId).resize(size.columns, size.rows);
   }
 
+  kill(sessionId: string): void {
+    this.#terminals.get(sessionId)?.kill();
+  }
+
   killAll(): void {
     for (const terminal of this.#terminals.values()) {
       terminal.kill();

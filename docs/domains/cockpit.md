@@ -45,7 +45,10 @@ The renderer's view of "the container" is the two bridges. Each bridge call runs
 - At startup, check the configured checkouts and show any problem in the startup dialog.
 - Move a ticket's status from a ready gate, a move-back gate, or the open tracker block of its status column. The popover previews the Jira transition; the move runs after a confirm, then the sprint is fetched again and that ticket's flow refreshes.
 - Prepare a ticket's workspace before its session starts: read the details from Jira and the open PRs from GitHub, add or reuse one worktree per repo with a `path`, and write `CLAUDE.md`.
-- Build the built-in prompts (build ticket, fix CI, resolve conflict, address feedback, diagnose deploy) with the ticket's description and repo folders, and hand them to the ticket's session once it reports idle.
+- Render prompt templates (the block state's `actions`, a prompt block's `prompt`, or the default for the button) with the ticket's details, repos, PR, threads and runs, and hand them to the ticket's session one by one, each once it reports idle.
+- After a forward move, send the tracker block's `actions.open` and the gate's `then` prompts.
+- Show `prompt` blocks as open until they're ticked, from the popover.
+- End a ticket's session when it's moved to the last column, or first seen there in a Refresh all.
 - Recompute a ticket's attention whenever its session's hook status changes.
 - Sort cards by column, furthest first, then by key.
 - Open a ticket in the Cockpit with a view transition (shared title and graph, list sliding in, terminal rising), and give every ticket its own Claude Code session.
