@@ -1,6 +1,16 @@
+import { join } from "node:path";
+
+import { ChangeContainer } from "@/change/entrypoints/container";
+import type { FlowCachePort } from "@/cockpit/adapters/flow_cache_port";
+import { FlowCacheSqlite } from "@/cockpit/adapters/flow_cache_sqlite";
+import { type AgentActivity, Attention } from "@/cockpit/models/attention";
 import { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
+import { BuildChangePrompt } from "@/cockpit/use_cases/build_change_prompt";
+import { ReassessAttention } from "@/cockpit/use_cases/reassess_attention";
 import { RefreshSprintBoard } from "@/cockpit/use_cases/refresh_sprint_board";
+import { RefreshTicketFlows } from "@/cockpit/use_cases/refresh_ticket_flows";
+import { RunChangeAction } from "@/cockpit/use_cases/run_change_action";
 import { ShowCachedSprintBoard } from "@/cockpit/use_cases/show_cached_sprint_board";
 import {
   loadProjectConfig,
@@ -18,6 +28,7 @@ import { SessionContainer } from "@/session/entrypoints/container";
 import { TicketContainer } from "@/ticket/entrypoints/container";
 
 const WINDOW_TITLE = "Ticket Cockpit";
+const CACHE_FILE_NAME = "cache.sqlite";
 
 function collectProblems<Loaded>(load: () => Loaded, problems: string[]): Loaded | null {
   try {
@@ -35,7 +46,9 @@ export class CockpitContainer {
   readonly #config: ProjectConfig;
   readonly #projectDefinition: ProjectDefinition;
   readonly #ticketContainer: TicketContainer;
+  readonly #changeContainer: ChangeContainer;
   readonly #sessionContainer: SessionContainer;
+  readonly #flowCache: FlowCachePort;
 
   constructor() {
     const problems: string[] = [];
@@ -51,7 +64,9 @@ export class CockpitContainer {
     this.#config = config;
     this.#projectDefinition = projectDefinition;
     this.#ticketContainer = new TicketContainer(projectDefinition.project.tracker.siteUrl, secrets);
+    this.#changeContainer = new ChangeContainer(secrets);
     this.#sessionContainer = new SessionContainer();
+    this.#flowCache = new FlowCacheSqlite(join(config.appDataRoot, CACHE_FILE_NAME));
   }
 
   session(): SessionContainer {
@@ -72,7 +87,11 @@ export class CockpitContainer {
   }
 
   showCachedSprintBoard(): ShowCachedSprintBoard {
-    return new ShowCachedSprintBoard(this.#ticketContainer.readCachedSprint(), this.#projectDefinition);
+    return new ShowCachedSprintBoard(
+      this.#ticketContainer.readCachedSprint(),
+      this.#flowCache,
+      this.#projectDefinition,
+    );
   }
 
   refreshSprintBoard(): RefreshSprintBoard {
@@ -81,6 +100,36 @@ export class CockpitContainer {
       this.#ticketContainer.readCachedSprint(),
       this.#projectDefinition,
     );
+  }
+
+  refreshTicketFlows(): RefreshTicketFlows {
+    return new RefreshTicketFlows(
+      this.#changeContainer.listRecentChanges(),
+      this.#changeContainer.findTicketChanges(),
+      this.#flowCache,
+      this.#projectDefinition,
+    );
+  }
+
+  runChangeAction(): RunChangeAction {
+    return new RunChangeAction(
+      this.#changeContainer.mergeChange(),
+      this.#changeContainer.updateChangeBranch(),
+      this.#changeContainer.replyToThread(),
+      this.#projectDefinition.project.code.mergeMethod,
+    );
+  }
+
+  buildChangePrompt(): BuildChangePrompt {
+    return new BuildChangePrompt();
+  }
+
+  reassessAttention(): ReassessAttention {
+    return new ReassessAttention(this.#flowCache, this.#projectDefinition.project.projectKey);
+  }
+
+  agentActivityOf(ticketKey: string): AgentActivity {
+    return Attention.activityOf(this.#sessionContainer.findTicketSession().execute(ticketKey)?.toDTO() ?? null);
   }
 
   trackerBrowseUrl(ticketKey: string): string {

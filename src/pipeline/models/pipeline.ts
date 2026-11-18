@@ -5,10 +5,15 @@ export const BLOCK_TYPES = ["change", "deploy", "attest", "tracker", "prompt"] a
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
+export const CHANGE_CHECKS = ["ready", "merged"] as const;
+
+export type ChangeCheck = (typeof CHANGE_CHECKS)[number];
+
 export interface BlockTemplateDTO {
   readonly blockId: string;
   readonly blockType: BlockType;
   readonly title: string;
+  readonly changeCheck: ChangeCheck | null;
 }
 
 export interface FlowLevelDTO {
@@ -44,6 +49,21 @@ function levelProblems(column: PipelineColumnDTO): readonly string[] {
   });
 }
 
+function changeCheckProblems(column: PipelineColumnDTO): readonly string[] {
+  return column.levels.flatMap((level) =>
+    level.blocks.flatMap((block) => {
+      const blockPath = `columns.${column.columnKey}: block ${block.blockId}`;
+      if (block.blockType === "change" && block.changeCheck === null) {
+        return [`${blockPath}: a change block needs done_when: change.ready or change.merged`];
+      }
+      if (block.blockType === "change" && !level.runsPerChange) {
+        return [`${blockPath}: a change block belongs in an each_change level`];
+      }
+      return [];
+    }),
+  );
+}
+
 function pipelineProblems(pipeline: PipelineDTO): readonly string[] {
   const columnKeys = pipeline.columns.map((column) => column.columnKey);
   const blockIds = pipeline.columns.flatMap((column) =>
@@ -59,6 +79,7 @@ function pipelineProblems(pipeline: PipelineDTO): readonly string[] {
     ...duplicatesOf(columnKeys).map((columnKey) => `columns.${columnKey}: defined twice`),
     ...duplicatesOf(blockIds).map((blockId) => `block ${blockId}: id is used twice`),
     ...pipeline.columns.flatMap(levelProblems),
+    ...pipeline.columns.flatMap(changeCheckProblems),
   ];
 }
 

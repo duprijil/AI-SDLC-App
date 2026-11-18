@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { app, BrowserWindow, dialog } from "electron";
 
-import { registerCockpitIpc } from "@/cockpit/entrypoints/api/cockpit_ipc";
+import { publishAttention, registerCockpitIpc } from "@/cockpit/entrypoints/api/cockpit_ipc";
 import { CockpitContainer } from "@/cockpit/entrypoints/container";
 import type { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
@@ -50,6 +50,7 @@ async function openCockpit(container: CockpitContainer): Promise<void> {
   const window = createWindow(settings);
   const hookServer = await startHookServer(container.session(), (session) => {
     publishSessionStatus(window.webContents, session);
+    publishAttention(window.webContents, container, session);
   });
   registerSessionIpc({ container: container.session(), hookEndpoint: hookServer.endpoint });
   registerCockpitIpc({ container, onConfigurationProblems: showConfigurationProblems });

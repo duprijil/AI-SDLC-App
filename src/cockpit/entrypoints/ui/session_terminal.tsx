@@ -2,13 +2,15 @@ import "@xterm/xterm/css/xterm.css";
 
 import { FitAddon } from "@xterm/addon-fit";
 import { type ITheme, Terminal } from "@xterm/xterm";
-import { type ReactElement, useEffect, useRef } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 
 import { sessionBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
+import type { AgentSessionDTO } from "@/session/models/agent_session";
 
 const TERMINAL_FONT_FAMILY = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const TERMINAL_FONT_SIZE = 13;
 const TERMINAL_SCROLLBACK_LINES = 10_000;
+const PROMPT_TIMEOUT_MILLISECONDS = 60_000;
 const TERMINAL_THEME: ITheme = {
   background: "#05070b",
   foreground: "#c8d1e0",
@@ -18,9 +20,16 @@ const TERMINAL_THEME: ITheme = {
 
 export interface SessionTerminalProps {
   readonly ticketKey: string;
+  readonly pendingPrompt: string | null;
+  readonly onPromptDelivered: () => void;
+  readonly onPromptTimedOut: () => void;
 }
 
-function attachTerminal(host: HTMLDivElement, ticketKey: string): () => void {
+function attachTerminal(
+  host: HTMLDivElement,
+  ticketKey: string,
+  onSession: (session: AgentSessionDTO) => void,
+): () => void {
   const bridge = sessionBridge();
   const terminal = new Terminal({
     fontFamily: TERMINAL_FONT_FAMILY,
@@ -47,6 +56,11 @@ function attachTerminal(host: HTMLDivElement, ticketKey: string): () => void {
         terminal.write(`\r\n[Claude Code exited with code ${String(exit.exitCode)}]\r\n`);
       }
     }),
+    bridge.onStatus((session) => {
+      if (session.ticketKey === ticketKey && !isDetached) {
+        onSession(session);
+      }
+    }),
   ];
   const keystrokeSubscription = terminal.onData((keystrokes) => {
     if (sessionId !== null) {
@@ -66,6 +80,7 @@ function attachTerminal(host: HTMLDivElement, ticketKey: string): () => void {
     .then((session) => {
       if (!isDetached) {
         sessionId = session.sessionId;
+        onSession(session);
         terminal.focus();
       }
     })
@@ -84,16 +99,41 @@ function attachTerminal(host: HTMLDivElement, ticketKey: string): () => void {
   };
 }
 
-export function SessionTerminal({ ticketKey }: SessionTerminalProps): ReactElement {
+export function SessionTerminal({
+  ticketKey,
+  pendingPrompt,
+  onPromptDelivered,
+  onPromptTimedOut,
+}: SessionTerminalProps): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null);
+  const deliveredPromptRef = useRef<string | null>(null);
+  const [session, setSession] = useState<AgentSessionDTO | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) {
       return undefined;
     }
-    return attachTerminal(host, ticketKey);
+    return attachTerminal(host, ticketKey, setSession);
   }, [ticketKey]);
+
+  useEffect(() => {
+    if (pendingPrompt === null || session?.status !== "idle" || deliveredPromptRef.current === pendingPrompt) {
+      return;
+    }
+    deliveredPromptRef.current = pendingPrompt;
+    sessionBridge().sendPrompt(session.sessionId, pendingPrompt).then(onPromptDelivered).catch(onPromptTimedOut);
+  }, [pendingPrompt, session, onPromptDelivered, onPromptTimedOut]);
+
+  useEffect(() => {
+    if (pendingPrompt === null) {
+      return undefined;
+    }
+    const timeout = window.setTimeout(onPromptTimedOut, PROMPT_TIMEOUT_MILLISECONDS);
+    return (): void => {
+      window.clearTimeout(timeout);
+    };
+  }, [pendingPrompt, onPromptTimedOut]);
 
   return <div className="session-terminal" ref={hostRef} />;
 }

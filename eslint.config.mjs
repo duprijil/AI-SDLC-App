@@ -45,7 +45,7 @@ export default defineConfig(
         { selector: "parameter", format: ["camelCase"], leadingUnderscore: "allow" },
         { selector: "typeLike", format: ["PascalCase"] },
         { selector: "enumMember", format: ["PascalCase"] },
-        { selector: ["objectLiteralProperty", "typeProperty"], format: null },
+        { selector: ["objectLiteralProperty", "objectLiteralMethod", "typeProperty"], format: null },
       ],
     },
   },

@@ -23,3 +23,7 @@ export class CockpitConfigurationError extends CockpitError {
 export class PipelineBoardMismatchError extends CockpitConfigurationError {
   override readonly name: string = "PipelineBoardMismatchError";
 }
+
+export class FlowCacheError extends CockpitError {
+  override readonly name: string = "FlowCacheError";
+}

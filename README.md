@@ -11,7 +11,7 @@ make install-dev
 make setup-env
 ```
 
-Fill `JIRA_EMAIL` and `JIRA_API_TOKEN` in `.env.secrets`. Create `projects/<your-project>/project.yaml` and `pipeline.yaml` (schema in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §4 and [docs/domains/pipeline.md](docs/domains/pipeline.md)), and set `ACTIVE_PROJECT` in `.env.config`. The `projects/` folder is gitignored. Then:
+Fill `JIRA_EMAIL`, `JIRA_API_TOKEN` and `GITHUB_TOKEN` in `.env.secrets`. The GitHub token is a fine-grained token on the project's repos with Pull requests (read and write), Contents (read and write), Commit statuses (read), Checks (read) and Metadata (read). Create `projects/<your-project>/project.yaml` and `pipeline.yaml` (schema in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §4 and [docs/domains/pipeline.md](docs/domains/pipeline.md)), and set `ACTIVE_PROJECT` in `.env.config`. The `projects/` folder is gitignored. Then:
 
 ```bash
 make run-desktop

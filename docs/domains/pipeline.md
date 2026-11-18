@@ -7,6 +7,9 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 | Term | Meaning |
 |---|---|
 | Project | One configured product: its name, tracker settings and repos. Its key is its folder name under `projects/` |
+| Code settings | `code.link.key_pattern` (a JavaScript regular expression matched case-insensitively), `code.link.merged_days` (default 45), and `code.merge.method` (`squash` by default, or `merge`/`rebase`) |
+| Repo | A name plus its GitHub repository (`github: owner/name`) |
+| Change check | For a `change` block, `done_when: change.ready` (PR opened, not a draft, CI not failing) or `change.merged` |
 | Tracker settings | Jira site URL, numeric board id, the scope JQL that selects "my tickets", and the status names to hide |
 | Pipeline | For each board column (by key), its flow of blocks |
 | Column key | The snake_case board column name: "Code Review" → `code_review` |
@@ -23,7 +26,9 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 ## Invariants
 
 - The tracker site is an https URL, the board id is a positive integer, and the scope is not empty.
-- Repo names are unique.
+- Repo names are unique, and every repo has `github: owner/name`.
+- `code.link.key_pattern` compiles as a regular expression.
+- A `change` block sits in an `each_change` level and has `done_when: change.ready` or `change.merged`.
 - Column keys and block ids are snake_case and unique. A block id is unique across the whole pipeline.
 - Every level has at least one block, and an `each_change` level has exactly one.
 - All of `projects/` is gitignored, because project files name real company systems. Nothing under it is committed.

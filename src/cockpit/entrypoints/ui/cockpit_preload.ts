@@ -1,10 +1,14 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
+import type { ChangeActionResultDTO } from "@/cockpit/models/change_action";
+import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO } from "@/cockpit/models/sprint_board";
 import {
+  type AttentionChangeDTO,
   SPRINT_BOARD_BRIDGE_GLOBAL,
   SPRINT_BOARD_CHANNEL,
   type SprintBoardBridge,
+  type TicketRefreshDTO,
 } from "@/cockpit/models/sprint_board_bridge";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import {
@@ -53,10 +57,26 @@ const sessionBridge: SessionBridge = {
 
 const sprintBoardBridge: SprintBoardBridge = {
   cached: async () => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.cached)) as SprintBoardDTO | null,
-  refresh: async () => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.refresh)) as SprintBoardDTO,
+  refreshAll: async () => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.refreshAll)) as SprintBoardDTO,
+  refreshTicket: async (ticketKey) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.refreshTicket, ticketKey)) as TicketRefreshDTO,
+  runChangeAction: async (ticketKey, action) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changeAction, ticketKey, action)) as ChangeActionResultDTO,
+  buildPrompt: async (request) => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changePrompt, request)) as string,
   openInTracker: async (ticketKey) => {
     await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.openInTracker, ticketKey);
   },
+  openExternal: async (url) => {
+    await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.openExternal, url);
+  },
+  onProgress: (listener) =>
+    subscribe(SPRINT_BOARD_CHANNEL.progress, (_event, progress) => {
+      listener(progress as RefreshProgressDTO);
+    }),
+  onAttention: (listener) =>
+    subscribe(SPRINT_BOARD_CHANNEL.attention, (_event, change) => {
+      listener(change as AttentionChangeDTO);
+    }),
 };
 
 export function exposeCockpitBridge(): void {

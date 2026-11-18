@@ -6,8 +6,14 @@ import { z } from "zod";
 
 import type { ProjectSourcePort } from "@/pipeline/adapters/project_source_port";
 import { InvalidProjectConfigError } from "@/pipeline/models/errors";
-import { BLOCK_TYPES, type FlowLevelDTO, Pipeline, type PipelineColumnDTO } from "@/pipeline/models/pipeline";
-import { Project } from "@/pipeline/models/project";
+import {
+  BLOCK_TYPES,
+  type ChangeCheck,
+  type FlowLevelDTO,
+  Pipeline,
+  type PipelineColumnDTO,
+} from "@/pipeline/models/pipeline";
+import { MERGE_METHODS, Project } from "@/pipeline/models/project";
 
 const PROJECT_FILE_NAME = "project.yaml";
 const PIPELINE_FILE_NAME = "pipeline.yaml";
@@ -16,6 +22,7 @@ const blockSchema = z.looseObject({
   id: z.string().min(1),
   type: z.enum(BLOCK_TYPES),
   title: z.string().min(1).optional(),
+  done_when: z.string().optional(),
 });
 
 const levelSchema = z.union([z.array(blockSchema).min(1), z.looseObject({ each_change: blockSchema })]);
@@ -33,8 +40,20 @@ const projectSchema = z.looseObject({
     scope: z.string().min(1),
     hide_statuses: z.array(z.string()).default([]),
   }),
-  repos: z.array(z.looseObject({ name: z.string().min(1) })).default([]),
+  code: z.looseObject({
+    link: z.looseObject({
+      key_pattern: z.string().min(1),
+      merged_days: z.number().int().positive().default(45),
+    }),
+    merge: z.looseObject({ method: z.enum(MERGE_METHODS).default("squash") }).default({ method: "squash" }),
+  }),
+  repos: z.array(z.looseObject({ name: z.string().min(1), github: z.string().min(1) })).default([]),
 });
+
+const CHANGE_CHECK_BY_DONE_WHEN: Readonly<Record<string, ChangeCheck>> = {
+  "change.ready": "ready",
+  "change.merged": "merged",
+};
 
 type BlockEntry = z.infer<typeof blockSchema>;
 type LevelEntry = z.infer<typeof levelSchema>;
@@ -48,6 +67,7 @@ const toBlockTemplate = (block: BlockEntry): FlowLevelDTO["blocks"][number] => (
   blockId: block.id,
   blockType: block.type,
   title: block.title ?? humanize(block.id),
+  changeCheck: block.type === "change" ? (CHANGE_CHECK_BY_DONE_WHEN[block.done_when ?? ""] ?? null) : null,
 });
 
 const toFlowLevel = (level: LevelEntry): FlowLevelDTO =>
@@ -75,7 +95,12 @@ export class ProjectSourceYaml implements ProjectSourcePort {
           scopeJql: entry.tracker.scope,
           hiddenStatusNames: entry.tracker.hide_statuses,
         },
-        repoNames: entry.repos.map((repo) => repo.name),
+        code: {
+          keyPattern: entry.code.link.key_pattern,
+          mergedDays: entry.code.link.merged_days,
+          mergeMethod: entry.code.merge.method,
+        },
+        repos: entry.repos.map((repo) => ({ name: repo.name, githubRepository: repo.github })),
       }),
     );
   }

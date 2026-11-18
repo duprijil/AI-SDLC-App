@@ -37,6 +37,7 @@ export interface ProjectConfig {
 export interface ProjectSecrets {
   readonly jiraEmail: SecretText;
   readonly jiraApiToken: SecretText;
+  readonly githubToken: SecretText;
 }
 
 type EnvEntries = Readonly<Partial<Record<string, string>>>;
@@ -115,6 +116,7 @@ export function loadProjectSecrets(): ProjectSecrets {
   const secrets: ProjectSecrets = Object.freeze({
     jiraEmail: new SecretText(reader.text("JIRA_EMAIL")),
     jiraApiToken: new SecretText(reader.text("JIRA_API_TOKEN")),
+    githubToken: new SecretText(reader.text("GITHUB_TOKEN")),
   });
   reader.failIfInvalid();
   return secrets;

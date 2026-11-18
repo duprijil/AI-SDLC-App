@@ -12,6 +12,7 @@ import type { SessionStorePort } from "@/session/adapters/session_store_port";
 import { WorkspaceFolder } from "@/session/adapters/workspace_folder";
 import type { WorkspacePort } from "@/session/adapters/workspace_port";
 import { ApplyHookEvent } from "@/session/use_cases/apply_hook_event";
+import { FindTicketSession } from "@/session/use_cases/find_ticket_session";
 import { ResizeTerminal } from "@/session/use_cases/resize_terminal";
 import { SendAgentPrompt } from "@/session/use_cases/send_agent_prompt";
 import { SendTerminalInput } from "@/session/use_cases/send_terminal_input";
@@ -62,6 +63,10 @@ export class SessionContainer {
 
   applyHookEvent(): ApplyHookEvent {
     return new ApplyHookEvent(this.#sessionStore);
+  }
+
+  findTicketSession(): FindTicketSession {
+    return new FindTicketSession(this.#sessionStore);
   }
 
   stopAgentSessions(): StopAgentSessions {
