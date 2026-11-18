@@ -7,7 +7,7 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 | Term | Meaning |
 |---|---|
 | Project | One configured product: its name, tracker settings and repos. Its key is its folder name under `projects/` |
-| Code settings | `code.link.key_pattern` (a JavaScript regular expression matched case-insensitively), `code.link.merged_days` (default 45), and `code.merge.method` (`squash` by default, or `merge`/`rebase`) |
+| Code settings | `code.link.key_pattern` (a JavaScript regular expression matched case-insensitively), `code.link.merged_days` (default 45), `code.merge.method` (`squash` by default, or `merge`/`rebase`), and `code.branch` (the new ticket branch, default `feat/{key}-{slug}`, must contain `{key}`) |
 | Repo | A name plus its GitHub repository (`github: owner/name`) |
 | Change check | For a `change` block, `done_when: change.ready` (PR opened, not a draft, CI not failing) or `change.merged` |
 | Tracker settings | Jira site URL, numeric board id, the scope JQL that selects "my tickets", and the status names to hide |

@@ -144,7 +144,7 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
     },
   );
 
-  ipcMain.handle(SPRINT_BOARD_CHANNEL.changePrompt, (_event, requestPayload: unknown): string =>
+  ipcMain.handle(SPRINT_BOARD_CHANNEL.changePrompt, async (_event, requestPayload: unknown): Promise<string> =>
     container.buildChangePrompt().execute(readPromptRequest(requestPayload)),
   );
 

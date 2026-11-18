@@ -1,15 +1,19 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 
-import type { GitPort } from "@/delivery/adapters/git_port";
+import type { GitPort, WorktreeAddRequest } from "@/delivery/adapters/git_port";
 import { CommitId } from "@/delivery/models/commit_id";
 import { CommitNotFoundError, GitCommandError } from "@/delivery/models/errors";
+import { Worktree, type WorktreeEntryDTO } from "@/delivery/models/worktree";
 
 const FETCH_TIMEOUT_MILLISECONDS = 30_000;
 const COMMAND_TIMEOUT_MILLISECONDS = 15_000;
 const MAXIMUM_OUTPUT_BYTES = 64 * 1024 * 1024;
 const MAXIMUM_CANDIDATE_COMMITS = 500;
 const EXIT_NOT_ANCESTOR = 1;
+const WORKTREE_TIMEOUT_MILLISECONDS = 60_000;
+const FALLBACK_DEFAULT_BRANCH = "main";
+const ORIGIN_PREFIX = "origin/";
 
 interface GitOutcome {
   readonly exitCode: number;
@@ -86,6 +90,60 @@ export class GitCli implements GitPort {
     }
     const outcome = await runGit({ checkoutPath, gitArguments: ["remote", "get-url", "origin"] });
     return outcome.exitCode === 0 ? outcome.stdout.trim() : null;
+  }
+
+  async defaultBranch(checkoutPath: string): Promise<string> {
+    const outcome = await runGit({
+      checkoutPath,
+      gitArguments: ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    });
+    const branch = outcome.stdout.trim();
+    if (outcome.exitCode !== 0 || !branch.startsWith(ORIGIN_PREFIX)) {
+      return FALLBACK_DEFAULT_BRANCH;
+    }
+    return branch.slice(ORIGIN_PREFIX.length);
+  }
+
+  async worktrees(checkoutPath: string): Promise<readonly WorktreeEntryDTO[]> {
+    const outcome = await runGit({ checkoutPath, gitArguments: ["worktree", "list", "--porcelain"] });
+    if (outcome.exitCode !== 0) {
+      throw new GitCommandError(outcome.stderr.trim() || `git worktree list failed in ${checkoutPath}`);
+    }
+    return Worktree.entriesOf(outcome.stdout);
+  }
+
+  async hasRef(checkoutPath: string, ref: string): Promise<boolean> {
+    const outcome = await runGit({ checkoutPath, gitArguments: ["show-ref", "--verify", "--quiet", ref] });
+    return outcome.exitCode === 0;
+  }
+
+  async isBranchName(checkoutPath: string, branch: string): Promise<boolean> {
+    const outcome = await runGit({ checkoutPath, gitArguments: ["check-ref-format", "--branch", branch] });
+    return outcome.exitCode === 0 && !branch.startsWith("-");
+  }
+
+  async addWorktree(request: WorktreeAddRequest): Promise<void> {
+    const gitArguments =
+      request.startPoint === null
+        ? ["worktree", "add", "--", request.folder, request.branch]
+        : [
+            "worktree",
+            "add",
+            request.shouldTrack ? "--track" : "--no-track",
+            "-b",
+            request.branch,
+            "--",
+            request.folder,
+            request.startPoint,
+          ];
+    const outcome = await runGit({
+      checkoutPath: request.checkoutPath,
+      gitArguments,
+      timeoutMilliseconds: WORKTREE_TIMEOUT_MILLISECONDS,
+    });
+    if (outcome.exitCode !== 0) {
+      throw new GitCommandError(outcome.stderr.trim() || `git worktree add failed for ${request.folder}`);
+    }
   }
 
   async #ensureKnown(checkoutPath: string, commitId: string): Promise<void> {

@@ -52,7 +52,11 @@ async function openCockpit(container: CockpitContainer): Promise<void> {
     publishSessionStatus(window.webContents, session);
     publishAttention(window.webContents, container, session);
   });
-  registerSessionIpc({ container: container.session(), hookEndpoint: hookServer.endpoint });
+  registerSessionIpc({
+    container: container.session(),
+    hookEndpoint: hookServer.endpoint,
+    prepareWorkspace: (ticketKey) => container.prepareTicketWorkspace().execute(ticketKey),
+  });
   registerCockpitIpc({ container, onConfigurationProblems: showConfigurationProblems });
   app.on("before-quit", () => {
     container.session().stopAgentSessions().execute();

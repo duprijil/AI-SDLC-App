@@ -11,6 +11,7 @@ Normal domain. Reads tickets and board columns from the tracker (Jira), keeps th
 | Sprint query | The project key, the board id, the scope JQL and the hidden status names |
 | Sprint snapshot | The board and the visible tickets, captured at one moment (`fetchedAt`) |
 | Sprint cache | The last snapshot per project, in `<APP_DATA_ROOT>/cache.sqlite` |
+| Ticket details | Key, title, status, the description as plain text, and the last 10 comments (author, date, text) |
 | Transition | A Jira workflow transition available from the ticket's current status: id, name, target status id and name |
 | Status move target | The ticket, the status id it's expected to be in, and the target column's name and status ids |
 
@@ -29,6 +30,7 @@ Normal domain. Reads tickets and board columns from the tracker (Jira), keeps th
 | `GET /rest/agile/1.0/board/{id}/configuration` | column names and their status ids |
 | `POST /rest/api/3/search/jql` with `summary`, `status` | the tickets, 100 per page, at most 20 pages |
 | `GET /rest/api/3/issue/{key}?fields=summary,status` | one ticket, live, before a move |
+| `GET /rest/api/3/issue/{key}?fields=summary,status,description,comment` | the details for a ticket's workspace and prompts; Atlassian Document Format is flattened to plain text |
 | `GET /rest/api/3/issue/{key}/transitions` | the transitions from the ticket's current status |
 | `POST /rest/api/3/issue/{key}/transitions` | run a transition (Jira answers 204) |
 

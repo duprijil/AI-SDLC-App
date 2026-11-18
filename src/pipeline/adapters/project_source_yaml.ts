@@ -16,6 +16,7 @@ import {
 } from "@/pipeline/models/pipeline";
 import {
   COMMIT_SOURCES,
+  DEFAULT_BRANCH_PATTERN,
   type EnvironmentSourceDTO,
   MERGE_METHODS,
   Project,
@@ -90,6 +91,7 @@ const projectSchema = z.looseObject({
       merged_days: z.number().int().positive().default(45),
     }),
     merge: z.looseObject({ method: z.enum(MERGE_METHODS).default("squash") }).default({ method: "squash" }),
+    branch: z.string().min(1).default(DEFAULT_BRANCH_PATTERN),
   }),
   repos: z.array(repoSchema).default([]),
 });
@@ -165,6 +167,7 @@ export class ProjectSourceYaml implements ProjectSourcePort {
           keyPattern: entry.code.link.key_pattern,
           mergedDays: entry.code.link.merged_days,
           mergeMethod: entry.code.merge.method,
+          branchPattern: entry.code.branch,
         },
         repos: entry.repos.map(toRepo),
       }),

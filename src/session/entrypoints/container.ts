@@ -13,11 +13,13 @@ import { WorkspaceFolder } from "@/session/adapters/workspace_folder";
 import type { WorkspacePort } from "@/session/adapters/workspace_port";
 import { ApplyHookEvent } from "@/session/use_cases/apply_hook_event";
 import { FindTicketSession } from "@/session/use_cases/find_ticket_session";
+import { OpenWorkspace } from "@/session/use_cases/open_workspace";
 import { ResizeTerminal } from "@/session/use_cases/resize_terminal";
 import { SendAgentPrompt } from "@/session/use_cases/send_agent_prompt";
 import { SendTerminalInput } from "@/session/use_cases/send_terminal_input";
 import { StartAgentSession } from "@/session/use_cases/start_agent_session";
 import { StopAgentSessions } from "@/session/use_cases/stop_agent_sessions";
+import { WriteWorkspaceFile } from "@/session/use_cases/write_workspace_file";
 
 export class SessionContainer {
   readonly #sessionStore: SessionStorePort;
@@ -67,6 +69,14 @@ export class SessionContainer {
 
   findTicketSession(): FindTicketSession {
     return new FindTicketSession(this.#sessionStore);
+  }
+
+  openWorkspace(): OpenWorkspace {
+    return new OpenWorkspace(this.#workspace);
+  }
+
+  writeWorkspaceFile(): WriteWorkspaceFile {
+    return new WriteWorkspaceFile(this.#workspace);
   }
 
   stopAgentSessions(): StopAgentSessions {

@@ -37,3 +37,7 @@ export class WorkspaceUnavailableError extends SessionError {
 export class HookSettingsWriteError extends SessionError {
   override readonly name: string = "HookSettingsWriteError";
 }
+
+export class InvalidWorkspaceFileError extends SessionError {
+  override readonly name: string = "InvalidWorkspaceFileError";
+}

@@ -6,6 +6,7 @@ import { SprintCacheSqlite } from "@/ticket/adapters/sprint_cache_sqlite";
 import { TrackerJira } from "@/ticket/adapters/tracker_jira";
 import type { TrackerPort } from "@/ticket/adapters/tracker_port";
 import { FetchSprint } from "@/ticket/use_cases/fetch_sprint";
+import { FetchTicketDetails } from "@/ticket/use_cases/fetch_ticket_details";
 import { FindStatusTransition } from "@/ticket/use_cases/find_status_transition";
 import { MoveTicket } from "@/ticket/use_cases/move_ticket";
 import { ReadCachedSprint } from "@/ticket/use_cases/read_cached_sprint";
@@ -28,6 +29,10 @@ export class TicketContainer {
 
   readCachedSprint(): ReadCachedSprint {
     return new ReadCachedSprint(this.#sprintCache);
+  }
+
+  fetchTicketDetails(): FetchTicketDetails {
+    return new FetchTicketDetails(this.#tracker);
   }
 
   findStatusTransition(): FindStatusTransition {

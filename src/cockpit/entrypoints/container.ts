@@ -2,6 +2,8 @@ import { join } from "node:path";
 
 import { AttestationContainer } from "@/attestation/entrypoints/container";
 import { ChangeContainer } from "@/change/entrypoints/container";
+import { BriefStoreMemory } from "@/cockpit/adapters/brief_store_memory";
+import type { BriefStorePort } from "@/cockpit/adapters/brief_store_port";
 import type { FlowCachePort } from "@/cockpit/adapters/flow_cache_port";
 import { FlowCacheSqlite } from "@/cockpit/adapters/flow_cache_sqlite";
 import { type AgentActivity, Attention } from "@/cockpit/models/attention";
@@ -9,6 +11,7 @@ import { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings"
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
 import { BuildChangePrompt } from "@/cockpit/use_cases/build_change_prompt";
 import { CheckTicketEnvironments } from "@/cockpit/use_cases/check_ticket_environments";
+import { PrepareTicketWorkspace } from "@/cockpit/use_cases/prepare_ticket_workspace";
 import { PreviewStatusMove } from "@/cockpit/use_cases/preview_status_move";
 import { ReassessAttention } from "@/cockpit/use_cases/reassess_attention";
 import { RefreshSprintBoard } from "@/cockpit/use_cases/refresh_sprint_board";
@@ -57,6 +60,7 @@ export class CockpitContainer {
   readonly #attestationContainer: AttestationContainer;
   readonly #sessionContainer: SessionContainer;
   readonly #flowCache: FlowCachePort;
+  readonly #briefStore: BriefStorePort;
 
   constructor() {
     const problems: string[] = [];
@@ -77,6 +81,7 @@ export class CockpitContainer {
     this.#attestationContainer = new AttestationContainer();
     this.#sessionContainer = new SessionContainer();
     this.#flowCache = new FlowCacheSqlite(join(config.appDataRoot, CACHE_FILE_NAME));
+    this.#briefStore = new BriefStoreMemory();
   }
 
   session(): SessionContainer {
@@ -189,7 +194,22 @@ export class CockpitContainer {
   }
 
   buildChangePrompt(): BuildChangePrompt {
-    return new BuildChangePrompt();
+    return new BuildChangePrompt(this.prepareTicketWorkspace());
+  }
+
+  prepareTicketWorkspace(): PrepareTicketWorkspace {
+    return new PrepareTicketWorkspace(
+      {
+        fetchTicketDetails: this.#ticketContainer.fetchTicketDetails(),
+        listRecentChanges: this.#changeContainer.listRecentChanges(),
+        readCachedSprint: this.#ticketContainer.readCachedSprint(),
+        openWorkspace: this.#sessionContainer.openWorkspace(),
+        writeWorkspaceFile: this.#sessionContainer.writeWorkspaceFile(),
+        prepareWorktree: this.#deliveryContainer.prepareWorktree(),
+        briefStore: this.#briefStore,
+      },
+      this.#projectDefinition.project,
+    );
   }
 
   reassessAttention(): ReassessAttention {
