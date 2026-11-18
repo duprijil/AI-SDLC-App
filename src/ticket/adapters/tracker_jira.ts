@@ -11,7 +11,9 @@ import {
   TrackerUnavailableError,
   TransitionRefusedError,
 } from "@/ticket/models/errors";
+import { RichText } from "@/ticket/models/rich_text";
 import { Ticket } from "@/ticket/models/ticket";
+import { TicketDetails, type TicketDetailsDTO } from "@/ticket/models/ticket_details";
 import { Transition } from "@/ticket/models/transition";
 
 const REQUEST_TIMEOUT_MILLISECONDS = 15_000;
@@ -38,6 +40,28 @@ const issueSchema = z.object({
     status: z.object({ id: z.string(), name: z.string() }),
   }),
 });
+
+const detailsSchema = z.object({
+  key: z.string(),
+  fields: z.object({
+    summary: z.string().nullish(),
+    status: z.object({ name: z.string() }),
+    description: z.unknown().optional(),
+    comment: z
+      .object({
+        comments: z.array(
+          z.object({
+            author: z.object({ displayName: z.string() }).nullish(),
+            created: z.string(),
+            body: z.unknown(),
+          }),
+        ),
+      })
+      .nullish(),
+  }),
+});
+
+const DETAIL_FIELDS = ["summary", "status", "description", "comment"];
 
 const transitionsSchema = z.object({
   transitions: z.array(
@@ -115,6 +139,27 @@ export class TrackerJira implements TrackerPort {
       notFound: () => new TicketNotFoundError(`Jira has no ticket ${ticketKey}, or it's not visible to you`),
     });
     return this.#toTicket(this.#shape(issueSchema, answer));
+  }
+
+  async ticketDetails(ticketKey: string): Promise<TicketDetailsDTO> {
+    const answer = await this.#request({
+      path: `/rest/api/3/issue/${encodeURIComponent(ticketKey)}?fields=${DETAIL_FIELDS.join(",")}`,
+      method: "GET",
+      notFound: () => new TicketNotFoundError(`Jira has no ticket ${ticketKey}, or it's not visible to you`),
+    });
+    const issue = this.#shape(detailsSchema, answer);
+    const comments = (issue.fields.comment?.comments ?? []).map((comment) => ({
+      authorName: comment.author?.displayName ?? "someone",
+      createdAt: comment.created,
+      body: RichText.toPlain(comment.body),
+    }));
+    return {
+      ticketKey: issue.key,
+      title: issue.fields.summary ?? "",
+      statusName: issue.fields.status.name,
+      description: RichText.toPlain(issue.fields.description ?? null),
+      comments: TicketDetails.latestComments(comments),
+    };
   }
 
   async transitions(ticketKey: string): Promise<readonly Transition[]> {

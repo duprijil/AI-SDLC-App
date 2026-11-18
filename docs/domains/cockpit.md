@@ -17,6 +17,7 @@ Combined domain, named after the product. It starts the desktop app, joins the `
 | Deploy line | One repo of a deploy block: done, failed, running, waiting, manual or could not check, with its run or promote link |
 | Deploy block state | n/a, deployed, deploy failed, deploying, partial n/m, waiting, manual (not checked, never stops a refresh), or could not check |
 | Attest block state | waits for the deployment, open, stale or validated; the pins are the deployed commits of the repos with a merged change of the ticket |
+| Workspace brief | What a ticket's session is told: the ticket's details, each repo's worktree (folder, branch, base, PR) or why it was skipped, and the conventions. Written as `CLAUDE.md`, kept in memory for the prompts |
 | Column move | A direction (`forward` or `back`) and a target column index. Gates and the open tracker block in the status column carry one |
 | Status move | Moving the ticket's Jira status to a column, from a gate or a tracker block, after a preview and a confirm |
 | Desktop app | The Electron main process: the window, the hook server and the IPC handlers |
@@ -43,7 +44,8 @@ The renderer's view of "the container" is the two bridges. Each bridge call runs
 - Check deploy blocks per repo with a merged change, and attest blocks against the stored ticks. Ticking re-computes the pins live and refuses if they changed since the popover opened.
 - At startup, check the configured checkouts and show any problem in the startup dialog.
 - Move a ticket's status from a ready gate, a move-back gate, or the open tracker block of its status column. The popover previews the Jira transition; the move runs after a confirm, then the sprint is fetched again and that ticket's flow refreshes.
-- Build the built-in prompts (build ticket, fix CI, resolve conflict, address feedback), and hand them to the ticket's session once it reports idle.
+- Prepare a ticket's workspace before its session starts: read the details from Jira and the open PRs from GitHub, add or reuse one worktree per repo with a `path`, and write `CLAUDE.md`.
+- Build the built-in prompts (build ticket, fix CI, resolve conflict, address feedback, diagnose deploy) with the ticket's description and repo folders, and hand them to the ticket's session once it reports idle.
 - Recompute a ticket's attention whenever its session's hook status changes.
 - Sort cards by column, furthest first, then by key.
 - Open a ticket in the Cockpit with a view transition (shared title and graph, list sliding in, terminal rising), and give every ticket its own Claude Code session.

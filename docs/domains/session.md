@@ -7,7 +7,8 @@ Normal domain. Runs exactly one AI agent session per ticket: the real tool (Clau
 | Term | Meaning |
 |---|---|
 | Agent session | One running agent for one ticket, identified by a UUID that is also the tool's own session id (`claude --session-id`) |
-| Workspace | `<AGENT_WORKSPACE_ROOT>/<TICKET>/`, the session's working folder. In M1+ it holds one git worktree per repo |
+| Workspace | `<AGENT_WORKSPACE_ROOT>/<TICKET>/`, the session's working folder. It holds one git worktree per repo and the context file `CLAUDE.md` |
+| Workspace preparation | The hook the app runs before a ticket's session starts (worktrees, context). It returns notes that are shown in the terminal |
 | Session status | `starting` → `idle` / `working` / `waiting` → `ended`, derived from hook events |
 | Hook event | A tool lifecycle callback (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SessionEnd`) posted to the app |
 | Hook endpoint | The app's loopback URL and per-run token that the hooks post to |
@@ -17,6 +18,8 @@ Normal domain. Runs exactly one AI agent session per ticket: the real tool (Clau
 ## Responsibilities
 
 - Start the agent in the ticket's workspace, or re-attach to the running one, replaying its recent output. Several tickets can have running sessions at once.
+- Before a new session starts, run the workspace preparation (at most once at a time per ticket, at most 60 s), and write its notes into the terminal.
+- Write plain files into a ticket's workspace (mode 600), for the context file.
 - Pass keystrokes and terminal resizes through to the PTY untouched.
 - Type prompts as bracketed pastes, so multi-line prompts arrive as one prompt.
 - Write per-session hook settings (`--settings <file>`, mode 600) that post every hook event to the hook endpoint.
@@ -30,6 +33,8 @@ Normal domain. Runs exactly one AI agent session per ticket: the real tool (Clau
 - An ended session never changes status again.
 - The hook endpoint listens on `127.0.0.1` only, and rejects requests without the run's token.
 - A prompt is never empty, and never contains the bracketed paste terminator.
+- A workspace file is a plain file name inside the workspace, never a path.
+- A failed or slow preparation never stops the session from starting.
 
 ## Tool-specific code
 

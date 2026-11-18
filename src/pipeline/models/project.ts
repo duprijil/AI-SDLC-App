@@ -20,7 +20,11 @@ export interface CodeSettingsDTO {
   readonly keyPattern: string;
   readonly mergedDays: number;
   readonly mergeMethod: MergeMethod;
+  readonly branchPattern: string;
 }
+
+export const DEFAULT_BRANCH_PATTERN = "feat/{key}-{slug}";
+const BRANCH_KEY_PLACEHOLDER = "{key}";
 
 export const COMMIT_SOURCES = ["run.head_sha", "image_label", "tag", "endpoint"] as const;
 
@@ -108,11 +112,13 @@ export class CodeSettings {
   readonly keyPattern: string;
   readonly mergedDays: number;
   readonly mergeMethod: MergeMethod;
+  readonly branchPattern: string;
 
   private constructor(settings: CodeSettingsDTO) {
     this.keyPattern = settings.keyPattern;
     this.mergedDays = settings.mergedDays;
     this.mergeMethod = settings.mergeMethod;
+    this.branchPattern = settings.branchPattern;
   }
 
   static create(settings: CodeSettingsDTO): CodeSettings {
@@ -127,6 +133,10 @@ export class CodeSettings {
       Number.isInteger(settings.mergedDays) && settings.mergedDays > 0 && settings.mergedDays <= MAXIMUM_MERGED_DAYS,
       () =>
         new InvalidProjectConfigError([`code.link.merged_days must be between 1 and ${String(MAXIMUM_MERGED_DAYS)}`]),
+    );
+    ensure(
+      settings.branchPattern.includes(BRANCH_KEY_PLACEHOLDER),
+      () => new InvalidProjectConfigError([`code.branch must contain {key}: ${settings.branchPattern}`]),
     );
     return new CodeSettings(settings);
   }
