@@ -1,15 +1,17 @@
 import { ipcMain, shell, type WebContents } from "electron";
 
+import { AttestationError } from "@/attestation/models/errors";
 import { ChangeError } from "@/change/models/errors";
 import {
+  readAttestTick,
   readChangeAction,
-  readGithubUrl,
+  readExternalUrl,
   readPromptRequest,
   readStatusMoveRequest,
 } from "@/cockpit/entrypoints/api/cockpit_payload";
 import type { CockpitContainer } from "@/cockpit/entrypoints/container";
 import type { ChangeActionResultDTO } from "@/cockpit/models/change_action";
-import { CockpitConfigurationError } from "@/cockpit/models/errors";
+import { CockpitConfigurationError, CockpitError } from "@/cockpit/models/errors";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO } from "@/cockpit/models/sprint_board";
 import {
@@ -18,6 +20,7 @@ import {
   type TicketRefreshDTO,
 } from "@/cockpit/models/sprint_board_bridge";
 import type { StatusMovePreviewDTO, StatusMoveResultDTO } from "@/cockpit/models/status_move_action";
+import { DeliveryError } from "@/delivery/models/errors";
 import { readText } from "@/session/entrypoints/api/ipc_payload";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import { SprintCacheError } from "@/ticket/models/errors";
@@ -67,6 +70,12 @@ async function refreshTicket(
     codeHostFailure: result.codeHostFailure,
   };
 }
+
+const isRefusal = (error: unknown): error is Error =>
+  error instanceof ChangeError ||
+  error instanceof DeliveryError ||
+  error instanceof AttestationError ||
+  error instanceof CockpitError;
 
 export function registerCockpitIpc(options: CockpitIpcOptions): void {
   const container = options.container;
@@ -160,11 +169,30 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
     return result;
   });
 
+  ipcMain.handle(
+    SPRINT_BOARD_CHANNEL.attestTick,
+    async (event, requestPayload: unknown): Promise<ChangeActionResultDTO> => {
+      const request = readAttestTick(requestPayload);
+      let failure: string | null = null;
+      try {
+        await container.runAttestation().execute(request);
+      } catch (error) {
+        if (!isRefusal(error)) {
+          throw error;
+        }
+        failure = error.message;
+        logger.error("Attestation refused", { ticketKey: request.ticketKey, reason: failure });
+      }
+      const refreshed = await refreshTicket(container, request.ticketKey, event.sender);
+      return { failure, card: refreshed.card };
+    },
+  );
+
   ipcMain.handle(SPRINT_BOARD_CHANNEL.openInTracker, async (_event, ticketKeyPayload: unknown): Promise<void> => {
     await shell.openExternal(container.trackerBrowseUrl(readText(ticketKeyPayload, "ticketKey")));
   });
 
   ipcMain.handle(SPRINT_BOARD_CHANNEL.openExternal, async (_event, urlPayload: unknown): Promise<void> => {
-    await shell.openExternal(readGithubUrl(urlPayload));
+    await shell.openExternal(readExternalUrl(urlPayload, container.promoteLinks()));
   });
 }

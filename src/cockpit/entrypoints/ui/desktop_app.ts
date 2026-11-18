@@ -82,6 +82,11 @@ export function startDesktopApp(): void {
     if (container === null) {
       return;
     }
+    const checkoutProblems = await container.verifyCheckouts();
+    if (checkoutProblems.length > 0) {
+      showConfigurationProblems(checkoutProblems);
+      return;
+    }
     try {
       await openCockpit(container);
     } catch (error) {

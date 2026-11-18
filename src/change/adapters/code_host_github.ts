@@ -28,7 +28,7 @@ const BOT_SUFFIX = "[bot]";
 const GHOST_LOGIN = "ghost";
 
 const CHANGE_FIELDS = `fragment ChangeFields on PullRequest {
-  id number title url headRefName state isDraft updatedAt headRefOid mergedAt author { login }
+  id number title url headRefName baseRefName state isDraft updatedAt headRefOid mergedAt mergeCommit { oid } author { login }
 }`;
 
 const LIST_QUERY = `query ListChanges($owner: String!, $name: String!) {
@@ -78,6 +78,8 @@ const changeNodeSchema = z.object({
   title: z.string(),
   url: z.string(),
   headRefName: z.string(),
+  baseRefName: z.string(),
+  mergeCommit: z.object({ oid: z.string() }).nullable(),
   state: z.enum(["OPEN", "MERGED", "CLOSED"]),
   isDraft: z.boolean(),
   updatedAt: z.string(),
@@ -223,6 +225,8 @@ export class CodeHostGithub implements CodeHostPort {
         isDraft: node.isDraft,
         updatedAt: node.updatedAt,
         headCommitId: node.headRefOid,
+        mergeCommitId: node.mergeCommit?.oid ?? null,
+        baseBranchName: node.baseRefName,
       }),
     );
   }

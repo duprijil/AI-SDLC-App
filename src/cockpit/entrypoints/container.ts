@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { AttestationContainer } from "@/attestation/entrypoints/container";
 import { ChangeContainer } from "@/change/entrypoints/container";
 import type { FlowCachePort } from "@/cockpit/adapters/flow_cache_port";
 import { FlowCacheSqlite } from "@/cockpit/adapters/flow_cache_sqlite";
@@ -7,10 +8,12 @@ import { type AgentActivity, Attention } from "@/cockpit/models/attention";
 import { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
 import { BuildChangePrompt } from "@/cockpit/use_cases/build_change_prompt";
+import { CheckTicketEnvironments } from "@/cockpit/use_cases/check_ticket_environments";
 import { PreviewStatusMove } from "@/cockpit/use_cases/preview_status_move";
 import { ReassessAttention } from "@/cockpit/use_cases/reassess_attention";
 import { RefreshSprintBoard } from "@/cockpit/use_cases/refresh_sprint_board";
 import { RefreshTicketFlows } from "@/cockpit/use_cases/refresh_ticket_flows";
+import { RunAttestation } from "@/cockpit/use_cases/run_attestation";
 import { RunChangeAction } from "@/cockpit/use_cases/run_change_action";
 import { RunStatusMove } from "@/cockpit/use_cases/run_status_move";
 import { ShowCachedSprintBoard } from "@/cockpit/use_cases/show_cached_sprint_board";
@@ -23,6 +26,7 @@ import {
 } from "@/config";
 import { LoggerConsole } from "@/core/adapters/logger_console";
 import type { LoggerPort } from "@/core/adapters/logger_port";
+import { DeliveryContainer } from "@/delivery/entrypoints/container";
 import { PipelineContainer } from "@/pipeline/entrypoints/container";
 import { InvalidProjectConfigError } from "@/pipeline/models/errors";
 import type { ProjectDefinition } from "@/pipeline/models/project_definition";
@@ -49,6 +53,8 @@ export class CockpitContainer {
   readonly #projectDefinition: ProjectDefinition;
   readonly #ticketContainer: TicketContainer;
   readonly #changeContainer: ChangeContainer;
+  readonly #deliveryContainer: DeliveryContainer;
+  readonly #attestationContainer: AttestationContainer;
   readonly #sessionContainer: SessionContainer;
   readonly #flowCache: FlowCachePort;
 
@@ -67,6 +73,8 @@ export class CockpitContainer {
     this.#projectDefinition = projectDefinition;
     this.#ticketContainer = new TicketContainer(projectDefinition.project.tracker.siteUrl, secrets);
     this.#changeContainer = new ChangeContainer(secrets);
+    this.#deliveryContainer = new DeliveryContainer(secrets);
+    this.#attestationContainer = new AttestationContainer();
     this.#sessionContainer = new SessionContainer();
     this.#flowCache = new FlowCacheSqlite(join(config.appDataRoot, CACHE_FILE_NAME));
   }
@@ -106,11 +114,48 @@ export class CockpitContainer {
 
   refreshTicketFlows(): RefreshTicketFlows {
     return new RefreshTicketFlows(
-      this.#changeContainer.listRecentChanges(),
-      this.#changeContainer.findTicketChanges(),
-      this.#flowCache,
+      {
+        listRecentChanges: this.#changeContainer.listRecentChanges(),
+        findTicketChanges: this.#changeContainer.findTicketChanges(),
+        checkTicketEnvironments: this.#checkTicketEnvironments(),
+        findAttestation: this.#attestationContainer.findAttestation(),
+        flowCache: this.#flowCache,
+      },
       this.#projectDefinition,
     );
+  }
+
+  runAttestation(): RunAttestation {
+    return new RunAttestation(
+      {
+        listRecentChanges: this.#changeContainer.listRecentChanges(),
+        findTicketChanges: this.#changeContainer.findTicketChanges(),
+        checkTicketEnvironments: this.#checkTicketEnvironments(),
+        recordAttestation: this.#attestationContainer.recordAttestation(),
+      },
+      this.#projectDefinition.project,
+    );
+  }
+
+  promoteLinks(): readonly string[] {
+    return this.#projectDefinition.project.repos.flatMap((repo) =>
+      Object.values(repo.environments).flatMap((env) =>
+        env.delivery === "manual" && env.promoteLink !== null ? [env.promoteLink] : [],
+      ),
+    );
+  }
+
+  async verifyCheckouts(): Promise<readonly string[]> {
+    const checkouts = this.#projectDefinition.project.repos.flatMap((repo) =>
+      repo.checkoutPath !== null && Object.values(repo.environments).some((env) => env.delivery === "github_actions")
+        ? [{ repoName: repo.name, githubRepository: repo.githubRepository, checkoutPath: repo.checkoutPath }]
+        : [],
+    );
+    return this.#deliveryContainer.verifyCheckouts().execute(checkouts);
+  }
+
+  #checkTicketEnvironments(): CheckTicketEnvironments {
+    return new CheckTicketEnvironments(this.#deliveryContainer.checkEnvironment(), this.#projectDefinition.project);
   }
 
   runChangeAction(): RunChangeAction {

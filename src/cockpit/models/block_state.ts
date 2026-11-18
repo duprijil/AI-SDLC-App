@@ -1,8 +1,10 @@
+import type { PinsDTO } from "@/attestation/models/pins";
 import type { Change } from "@/change/models/change";
 import type { ChangeReview } from "@/change/models/change_review";
 import type { ReviewThread } from "@/change/models/review_thread";
 import type { TicketChange } from "@/change/models/ticket_changes";
 import type { ColumnMoveDTO } from "@/cockpit/models/column_move";
+import { type DeployLineDTO, DeployView } from "@/cockpit/models/deploy_view";
 import type { BlockTemplateDTO, ChangeCheck } from "@/pipeline/models/pipeline";
 
 export type BlockStateKind =
@@ -18,6 +20,17 @@ export type BlockStateKind =
   | "in_review"
   | "tracker_done"
   | "tracker_open"
+  | "deploy_na"
+  | "deploy_done"
+  | "deploy_failed"
+  | "deploy_running"
+  | "deploy_partial"
+  | "deploy_waiting"
+  | "deploy_manual"
+  | "attest_open"
+  | "attest_stale"
+  | "attest_done"
+  | "attest_waits"
   | "not_checked_yet"
   | "could_not_check"
   | "waits";
@@ -42,6 +55,14 @@ export interface ThreadViewDTO {
   readonly lastCommentBody: string;
 }
 
+export interface AttestationViewDTO {
+  readonly envName: string;
+  readonly currentPins: PinsDTO;
+  readonly tickedPins: PinsDTO | null;
+  readonly tickedBy: string | null;
+  readonly tickedAt: string | null;
+}
+
 export interface BlockStateDTO {
   readonly blockId: string;
   readonly title: string;
@@ -52,6 +73,9 @@ export interface BlockStateDTO {
   readonly change: ChangeViewDTO | null;
   readonly threads: readonly ThreadViewDTO[];
   readonly moveTo: ColumnMoveDTO | null;
+  readonly envName: string | null;
+  readonly deployLines: readonly DeployLineDTO[];
+  readonly attestation: AttestationViewDTO | null;
 }
 
 interface KindMeta {
@@ -73,12 +97,32 @@ const KIND_META: Readonly<Record<BlockStateKind, KindMeta>> = {
   in_review: { tone: "wait", isFinished: false, caption: "in review" },
   tracker_done: { tone: "ok", isFinished: true, caption: "done" },
   tracker_open: { tone: "wait", isFinished: false, caption: "waiting" },
-  not_checked_yet: { tone: "idle", isFinished: true, caption: "checked from M3/M4" },
+  deploy_na: { tone: "ok", isFinished: true, caption: "n/a" },
+  deploy_done: { tone: "ok", isFinished: true, caption: "deployed" },
+  deploy_failed: { tone: "fail", isFinished: false, caption: "deploy failed" },
+  deploy_running: { tone: "wait", isFinished: false, caption: "deploying" },
+  deploy_partial: { tone: "wait", isFinished: false, caption: "partial" },
+  deploy_waiting: { tone: "wait", isFinished: false, caption: "waiting for a deploy" },
+  deploy_manual: { tone: "idle", isFinished: true, caption: "manual · not checked yet" },
+  attest_open: { tone: "warn", isFinished: false, caption: "open · tick when validated" },
+  attest_stale: { tone: "warn", isFinished: false, caption: "stale · the deployed commits changed" },
+  attest_done: { tone: "ok", isFinished: true, caption: "validated" },
+  attest_waits: { tone: "lock", isFinished: false, caption: "waits for the deployment" },
+  not_checked_yet: { tone: "idle", isFinished: true, caption: "checked from M4" },
   could_not_check: { tone: "lock", isFinished: false, caption: "could not check" },
   waits: { tone: "lock", isFinished: false, caption: "waits for the block above" },
 };
 
-const NEEDS_YOU_KINDS: readonly BlockStateKind[] = ["feedback", "conflict", "behind", "approved"];
+const NEEDS_YOU_KINDS: readonly BlockStateKind[] = [
+  "feedback",
+  "conflict",
+  "behind",
+  "approved",
+  "attest_open",
+  "attest_stale",
+];
+
+const FAILURE_KINDS: readonly BlockStateKind[] = ["ci_failing", "deploy_failed"];
 
 type ReviewRule = readonly [BlockStateKind, (review: ChangeReview, change: Change, viewerLogin: string) => boolean];
 
@@ -123,6 +167,8 @@ interface BlockStateParts {
   readonly threads?: readonly ThreadViewDTO[];
   readonly caption?: string;
   readonly moveTo?: ColumnMoveDTO | null;
+  readonly deployLines?: readonly DeployLineDTO[];
+  readonly attestation?: AttestationViewDTO | null;
 }
 
 function blockState(template: BlockTemplateDTO, kind: BlockStateKind, parts: BlockStateParts): BlockStateDTO {
@@ -137,6 +183,9 @@ function blockState(template: BlockTemplateDTO, kind: BlockStateKind, parts: Blo
     change: parts.change ?? null,
     threads: parts.threads ?? [],
     moveTo: parts.moveTo ?? null,
+    envName: template.envName,
+    deployLines: parts.deployLines ?? [],
+    attestation: parts.attestation ?? null,
   };
 }
 
@@ -180,6 +229,31 @@ export const BlockState = {
     });
   },
 
+  forDeploy(template: BlockTemplateDTO, deployLines: readonly DeployLineDTO[]): BlockStateDTO {
+    const kind = DeployView.outcome(deployLines);
+    const caption = kind === "deploy_partial" ? DeployView.partialCaption(deployLines) : undefined;
+    const reason = deployLines.find((line) => line.state === "could_not_check")?.caption;
+    return blockState(template, kind, {
+      title: template.title,
+      deployLines,
+      ...(kind === "could_not_check" ? { caption: reason ?? "could not check" } : {}),
+      ...(caption === undefined ? {} : { caption }),
+    });
+  },
+
+  forAttest(
+    template: BlockTemplateDTO,
+    status: "open" | "stale" | "done",
+    attestation: AttestationViewDTO,
+  ): BlockStateDTO {
+    const kinds = { open: "attest_open", stale: "attest_stale", done: "attest_done" } as const;
+    return blockState(template, kinds[status], { title: template.title, attestation });
+  },
+
+  attestWaits(template: BlockTemplateDTO, reason: string): BlockStateDTO {
+    return blockState(template, "attest_waits", { title: template.title, caption: reason });
+  },
+
   notCheckedYet(template: BlockTemplateDTO): BlockStateDTO {
     return blockState(template, "not_checked_yet", { title: template.title });
   },
@@ -193,6 +267,6 @@ export const BlockState = {
   },
 
   isFailure(block: BlockStateDTO): boolean {
-    return block.kind === "ci_failing";
+    return FAILURE_KINDS.includes(block.kind);
   },
 };

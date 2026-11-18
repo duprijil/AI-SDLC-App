@@ -1,4 +1,5 @@
 import type { AttentionKind } from "@/cockpit/models/attention";
+import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO, ChangeActionResultDTO } from "@/cockpit/models/change_action";
 import type { ChangePromptRequestDTO } from "@/cockpit/models/change_prompt";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
@@ -24,6 +25,7 @@ export const SPRINT_BOARD_CHANNEL = Object.freeze({
   changePrompt: "change:prompt",
   movePreview: "ticket:move-preview",
   move: "ticket:move",
+  attestTick: "attest:tick",
 });
 
 export interface AttentionChangeDTO {
@@ -44,6 +46,7 @@ export interface SprintBoardBridge {
   buildPrompt(request: ChangePromptRequestDTO): Promise<string>;
   previewStatusMove(request: StatusMoveRequestDTO): Promise<StatusMovePreviewDTO>;
   moveStatus(request: StatusMoveRequestDTO): Promise<StatusMoveResultDTO>;
+  tickAttestation(request: AttestTickRequestDTO): Promise<ChangeActionResultDTO>;
   openInTracker(ticketKey: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   onProgress(listener: (progress: RefreshProgressDTO) => void): Unsubscribe;

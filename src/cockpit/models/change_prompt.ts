@@ -1,7 +1,13 @@
 import type { ChangeViewDTO, ThreadViewDTO } from "@/cockpit/models/block_state";
 import { CockpitError } from "@/cockpit/models/errors";
 
-export const PROMPT_KINDS = ["build_ticket", "fix_ci", "resolve_conflict", "address_feedback"] as const;
+export const PROMPT_KINDS = [
+  "build_ticket",
+  "fix_ci",
+  "resolve_conflict",
+  "address_feedback",
+  "diagnose_deploy",
+] as const;
 
 export type PromptKind = (typeof PROMPT_KINDS)[number];
 
@@ -11,6 +17,7 @@ export interface ChangePromptRequestDTO {
   readonly ticketTitle: string;
   readonly change: ChangeViewDTO | null;
   readonly threads: readonly ThreadViewDTO[];
+  readonly runUrls: readonly string[];
 }
 
 const changeLine = (change: ChangeViewDTO): string =>
@@ -50,6 +57,12 @@ const PROMPT_BUILDERS: Readonly<Record<PromptKind, (request: ChangePromptRequest
     "Open threads waiting for a reply:",
     ...threadLines(request.threads),
     "Fix what the reviewers asked for and push. Draft a short reply for each thread, but don't post it.",
+  ],
+  diagnose_deploy: (request) => [
+    `Diagnose the failed deployment for ${request.ticketKey}: ${request.ticketTitle}.`,
+    ...request.runUrls.map((runUrl) => `Failed run: ${runUrl}`),
+    "Read the run's logs (for example with gh run view --log-failed), find the cause, and propose a fix.",
+    "Don't re-run or trigger any deployment.",
   ],
 };
 

@@ -14,7 +14,11 @@ export interface BlockTemplateDTO {
   readonly blockType: BlockType;
   readonly title: string;
   readonly changeCheck: ChangeCheck | null;
+  readonly envName: string | null;
+  readonly doneWhen: string | null;
 }
+
+const ATTESTED_CHECK = "attested";
 
 export interface FlowLevelDTO {
   readonly runsPerChange: boolean;
@@ -64,6 +68,24 @@ function changeCheckProblems(column: PipelineColumnDTO): readonly string[] {
   );
 }
 
+function environmentBlockProblems(column: PipelineColumnDTO): readonly string[] {
+  return column.levels.flatMap((level) =>
+    level.blocks.flatMap((block) => {
+      const blockPath = `columns.${column.columnKey}: block ${block.blockId}`;
+      if (block.blockType === "deploy" && block.envName === null) {
+        return [`${blockPath}: a deploy block needs env: <env name>`];
+      }
+      if (block.blockType !== "attest") {
+        return [];
+      }
+      return [
+        ...(block.envName === null ? [`${blockPath}: an attest block needs pin: 'env("<env name>").commits'`] : []),
+        ...(block.doneWhen === ATTESTED_CHECK ? [] : [`${blockPath}: an attest block needs done_when: attested`]),
+      ];
+    }),
+  );
+}
+
 function pipelineProblems(pipeline: PipelineDTO): readonly string[] {
   const columnKeys = pipeline.columns.map((column) => column.columnKey);
   const blockIds = pipeline.columns.flatMap((column) =>
@@ -80,6 +102,7 @@ function pipelineProblems(pipeline: PipelineDTO): readonly string[] {
     ...duplicatesOf(blockIds).map((blockId) => `block ${blockId}: id is used twice`),
     ...pipeline.columns.flatMap(levelProblems),
     ...pipeline.columns.flatMap(changeCheckProblems),
+    ...pipeline.columns.flatMap(environmentBlockProblems),
   ];
 }
 
@@ -98,6 +121,12 @@ export class Pipeline {
 
   columnKeys(): readonly string[] {
     return this.columns.map((column) => column.columnKey);
+  }
+
+  environmentBlocks(): readonly BlockTemplateDTO[] {
+    return this.columns.flatMap((column) =>
+      column.levels.flatMap((level) => level.blocks.filter((block) => block.envName !== null)),
+    );
   }
 
   columnFor(columnKey: string): PipelineColumnDTO | null {

@@ -67,6 +67,8 @@ const sprintBoardBridge: SprintBoardBridge = {
   previewStatusMove: async (request) =>
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.movePreview, request)) as StatusMovePreviewDTO,
   moveStatus: async (request) => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.move, request)) as StatusMoveResultDTO,
+  tickAttestation: async (request) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.attestTick, request)) as ChangeActionResultDTO,
   openInTracker: async (ticketKey) => {
     await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.openInTracker, ticketKey);
   },
