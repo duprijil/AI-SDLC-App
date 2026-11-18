@@ -5,6 +5,7 @@ import type { ChangeActionDTO } from "@/cockpit/models/change_action";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import type { AttentionChangeDTO } from "@/cockpit/models/sprint_board_bridge";
+import type { StatusMoveRequestDTO } from "@/cockpit/models/status_move_action";
 
 export interface SprintBoardState {
   readonly board: SprintBoardDTO | null;
@@ -14,6 +15,7 @@ export interface SprintBoardState {
   readonly refreshAll: () => void;
   readonly refreshTicket: (ticketKey: string) => void;
   readonly runChangeAction: (ticketKey: string, action: ChangeActionDTO) => Promise<string | null>;
+  readonly moveStatus: (request: StatusMoveRequestDTO) => Promise<string | null>;
 }
 
 const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : "unknown");
@@ -110,6 +112,19 @@ export function useSprintBoard(): SprintBoardState {
     return result.failure;
   }, []);
 
+  const moveStatus = useCallback(async (request: StatusMoveRequestDTO): Promise<string | null> => {
+    setRefreshingTicketKeys((keys) => toggled(keys, request.ticketKey, true));
+    try {
+      const result = await sprintBoardBridge().moveStatus(request);
+      if (result.board !== null) {
+        setBoard(result.board);
+      }
+      return result.failure;
+    } finally {
+      setRefreshingTicketKeys((keys) => toggled(keys, request.ticketKey, false));
+    }
+  }, []);
+
   useEffect(() => {
     const bridge = sprintBoardBridge();
     const stopProgress = bridge.onProgress((progress) => {
@@ -136,5 +151,14 @@ export function useSprintBoard(): SprintBoardState {
       .finally(refreshAll);
   }, [refreshAll, showFailure]);
 
-  return { board, isRefreshingAll, refreshingTicketKeys, scans, refreshAll, refreshTicket, runChangeAction };
+  return {
+    board,
+    isRefreshingAll,
+    refreshingTicketKeys,
+    scans,
+    refreshAll,
+    refreshTicket,
+    runChangeAction,
+    moveStatus,
+  };
 }

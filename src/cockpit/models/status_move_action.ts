@@ -1,0 +1,59 @@
+import type { ColumnMoveDirection } from "@/cockpit/models/column_move";
+import { InvalidStatusMoveError } from "@/cockpit/models/errors";
+import type { SprintBoardDTO } from "@/cockpit/models/sprint_board";
+import type { SprintSnapshot } from "@/ticket/models/sprint_snapshot";
+import type { StatusMoveTargetDTO } from "@/ticket/models/status_move";
+
+export interface StatusMoveRequestDTO {
+  readonly ticketKey: string;
+  readonly targetColumnIndex: number;
+}
+
+export interface StatusMovePreviewDTO {
+  readonly ticketKey: string;
+  readonly direction: ColumnMoveDirection;
+  readonly fromStatusName: string;
+  readonly toColumnName: string;
+  readonly transitionLabel: string | null;
+  readonly refusal: string | null;
+}
+
+export interface StatusMoveResultDTO {
+  readonly failure: string | null;
+  readonly board: SprintBoardDTO | null;
+}
+
+export interface StatusMovePlanDTO {
+  readonly target: StatusMoveTargetDTO;
+  readonly direction: ColumnMoveDirection;
+  readonly fromStatusName: string;
+}
+
+export const StatusMovePlan = {
+  resolve(snapshot: SprintSnapshot | null, request: StatusMoveRequestDTO): StatusMovePlanDTO {
+    const ticket = snapshot?.tickets.find((candidate) => candidate.ticketKey === request.ticketKey);
+    if (snapshot === null || ticket === undefined) {
+      throw new InvalidStatusMoveError(`${request.ticketKey} is not on the board. Refresh and try again.`);
+    }
+    const currentColumnIndex = snapshot.board.columnIndexFor(ticket.statusId);
+    const targetColumn = snapshot.board.columns[request.targetColumnIndex];
+    if (currentColumnIndex === null || targetColumn === undefined) {
+      throw new InvalidStatusMoveError(`${request.ticketKey} can't be moved from its current status`);
+    }
+    const isForward = request.targetColumnIndex === currentColumnIndex + 1;
+    const isBack = request.targetColumnIndex < currentColumnIndex;
+    if (!isForward && !isBack) {
+      throw new InvalidStatusMoveError(`${request.ticketKey} moves one column forward, or back to an earlier column`);
+    }
+    return {
+      target: {
+        ticketKey: ticket.ticketKey,
+        expectedStatusId: ticket.statusId,
+        targetColumnName: targetColumn.name,
+        targetStatusIds: targetColumn.statusIds,
+      },
+      direction: isForward ? "forward" : "back",
+      fromStatusName: ticket.statusName,
+    };
+  },
+};

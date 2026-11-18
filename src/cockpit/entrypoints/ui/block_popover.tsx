@@ -7,8 +7,18 @@ import type { BlockStateDTO, BlockStateKind, ChangeViewDTO } from "@/cockpit/mod
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
 import type { PromptKind } from "@/cockpit/models/change_prompt";
 
-const POPOVER_WIDTH = 380;
+export const POPOVER_WIDTH = 380;
 const POPOVER_GAP = 8;
+
+export interface PopoverPosition {
+  readonly left: number;
+  readonly top: number;
+}
+
+export const popoverPosition = (anchorRect: DOMRect): PopoverPosition => ({
+  left: Math.max(POPOVER_GAP, Math.min(anchorRect.left, window.innerWidth - POPOVER_WIDTH - POPOVER_GAP)),
+  top: anchorRect.bottom + POPOVER_GAP,
+});
 
 export interface PopoverTarget {
   readonly ticketKey: string;
@@ -136,8 +146,7 @@ const ACTIONS: Partial<Record<BlockStateKind, (context: PopoverContext) => React
 export function BlockPopover(props: BlockPopoverProps): ReactElement {
   const { target, onClose } = props;
   const context: PopoverContext = { ...props, change: target.block.change };
-  const left = Math.max(POPOVER_GAP, Math.min(target.anchorRect.left, window.innerWidth - POPOVER_WIDTH - POPOVER_GAP));
-  const top = target.anchorRect.bottom + POPOVER_GAP;
+  const { left, top } = popoverPosition(target.anchorRect);
   return (
     <>
       <div className="pop-backdrop" onClick={onClose} />

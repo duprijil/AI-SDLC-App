@@ -1,7 +1,12 @@
 import { ipcMain, shell, type WebContents } from "electron";
 
 import { ChangeError } from "@/change/models/errors";
-import { readChangeAction, readGithubUrl, readPromptRequest } from "@/cockpit/entrypoints/api/cockpit_payload";
+import {
+  readChangeAction,
+  readGithubUrl,
+  readPromptRequest,
+  readStatusMoveRequest,
+} from "@/cockpit/entrypoints/api/cockpit_payload";
 import type { CockpitContainer } from "@/cockpit/entrypoints/container";
 import type { ChangeActionResultDTO } from "@/cockpit/models/change_action";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
@@ -12,6 +17,7 @@ import {
   SPRINT_BOARD_CHANNEL,
   type TicketRefreshDTO,
 } from "@/cockpit/models/sprint_board_bridge";
+import type { StatusMovePreviewDTO, StatusMoveResultDTO } from "@/cockpit/models/status_move_action";
 import { readText } from "@/session/entrypoints/api/ipc_payload";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import { SprintCacheError } from "@/ticket/models/errors";
@@ -132,6 +138,27 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
   ipcMain.handle(SPRINT_BOARD_CHANNEL.changePrompt, (_event, requestPayload: unknown): string =>
     container.buildChangePrompt().execute(readPromptRequest(requestPayload)),
   );
+
+  ipcMain.handle(
+    SPRINT_BOARD_CHANNEL.movePreview,
+    async (_event, requestPayload: unknown): Promise<StatusMovePreviewDTO> =>
+      container.previewStatusMove().execute(readStatusMoveRequest(requestPayload)),
+  );
+
+  ipcMain.handle(SPRINT_BOARD_CHANNEL.move, async (event, requestPayload: unknown): Promise<StatusMoveResultDTO> => {
+    const move = readStatusMoveRequest(requestPayload);
+    const result = await container.runStatusMove().execute({
+      move,
+      activityOf,
+      onProgress: (progress) => {
+        sendToRenderer(event.sender, SPRINT_BOARD_CHANNEL.progress, progress);
+      },
+    });
+    if (result.failure !== null) {
+      logger.error("Status move refused", { ticketKey: move.ticketKey, reason: result.failure });
+    }
+    return result;
+  });
 
   ipcMain.handle(SPRINT_BOARD_CHANNEL.openInTracker, async (_event, ticketKeyPayload: unknown): Promise<void> => {
     await shell.openExternal(container.trackerBrowseUrl(readText(ticketKeyPayload, "ticketKey")));

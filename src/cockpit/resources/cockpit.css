@@ -379,6 +379,23 @@ button {
   animation: pulse 1.6s infinite;
 }
 
+button.gate {
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.g-move_back {
+  border-color: var(--warn-bd);
+  color: var(--warn-tx);
+  font-size: 13px;
+}
+
+.g-move_back:hover {
+  background: var(--warn-bd);
+  color: #fff;
+}
+
 .g-locked {
   border-color: var(--line2);
   color: var(--dim);

@@ -24,6 +24,7 @@ export interface CockpitScreenProps {
   readonly onSelectTicket: (ticketKey: string) => void;
   readonly onBack: () => void;
   readonly onBlockClick: TicketGraphProps["onBlockClick"];
+  readonly onMoveClick: TicketGraphProps["onMoveClick"];
   readonly onPromptDelivered: () => void;
   readonly onPromptTimedOut: () => void;
 }
@@ -92,7 +93,13 @@ export function CockpitScreen(props: CockpitScreenProps): ReactElement {
           <PromptFallback promptHandOff={promptHandOff} />
         )}
         <div className="cockpit-graph" style={{ viewTransitionName: "ticket-graph" }}>
-          <TicketGraph columns={board?.columns ?? []} card={card} scan={scan} onBlockClick={props.onBlockClick} />
+          <TicketGraph
+            columns={board?.columns ?? []}
+            card={card}
+            scan={scan}
+            onBlockClick={props.onBlockClick}
+            onMoveClick={props.onMoveClick}
+          />
         </div>
         <div className="tui">
           <SessionTerminal

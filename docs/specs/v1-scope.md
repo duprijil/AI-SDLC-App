@@ -1,6 +1,6 @@
 # Ticket Cockpit v1: scope and architecture
 
-**Status:** draft for review · 2026-11-17
+**Status:** approved · M0–M2 done · 2026-11-18
 **Based on:** [brainstorm 01](../brainstorm/01-value-concepts-design.md) → [02](../brainstorm/02-board-model.md) → [03](../brainstorm/03-desktop-and-column-flows.md). The UI reference is [design/mockup.html](../design/mockup.html) (v0.4).
 
 Where the brainstorm docs and this spec disagree, **this spec wins**.
@@ -368,15 +368,15 @@ Transitions: card → Cockpit (shared graph and title, the list slides in, the t
 
 ## 9. Milestones
 
-| # | Milestone | Delivers | Exit check |
-|---|---|---|---|
-| **M0** | **Scaffold + embed spike** (GH-1) | Electron was chosen without a Tauri prototype. `/engineer:new-project` scaffolds the repo (tools, Makefile, CI, Stack section). The spike embeds `claude` in xterm.js with a PTY, resize, colours, bracketed paste and hooks posting to the core. | Claude Code is fully usable in the app; `make check` passes |
-| M1 | Skeleton + Jira (GH-3, [spec](GH-3-cockpit-show-sprint-tickets.md)) | Config loader and validation · Jira connector · board columns · My tickets with graphs from the template (no checks yet) · SQLite cache · Cockpit with one session per ticket | My sprint shows with the right columns |
-| M2 | Changes + engine (GH-4, [spec](GH-4-cockpit-check-changes-and-refresh.md)) | GitHub connector · `change` blocks · refresh engine with early stop + animation · popovers · merge, update branch, comment | The Code Review column is fully correct for real tickets |
-| M3 | Delivery | GitHub Actions + kubectl runtime · ancestry and patch-id · `deploy` blocks · `attest` with pins · gates and status moves (forward and back) | "In dev / in stage" is correct across the Deck Builder repos |
-| M4 | Sessions | Workspaces and worktrees · Claude Code PTY · harness (inject, hooks, permissions) · `sdlc` MCP server · `prompt` blocks · Cockpit terminal · attention from hooks | A real ticket runs from build to merge through the Cockpit |
-| M5 | Editor + polish | Pipeline editor (read/write YAML, validation) · first-run screen · ● Live · ? help · transitions | The PoC can be retired |
-| v1.1 | Next | Jenkins connector · mirror TUI permissions onto the graph · several projects | — |
+| # | Milestone | Delivers | Exit check | Status |
+|---|---|---|---|---|
+| **M0** | **Scaffold + embed spike** (GH-1) | Electron was chosen without a Tauri prototype. `/engineer:new-project` scaffolds the repo (tools, Makefile, CI, Stack section). The spike embeds `claude` in xterm.js with a PTY, resize, colours, bracketed paste and hooks posting to the core. | Claude Code is fully usable in the app; `make check` passes | ✅ Done |
+| M1 | Skeleton + Jira (GH-3, [spec](GH-3-cockpit-show-sprint-tickets.md)) | Config loader and validation · Jira connector · board columns · My tickets with graphs from the template (no checks yet) · SQLite cache · Cockpit with one session per ticket | My sprint shows with the right columns | ✅ Done |
+| M2 | Changes + engine (GH-4, [spec](GH-4-cockpit-check-changes-and-refresh.md)) | GitHub connector · `change` blocks · refresh engine with early stop + animation · popovers · merge, update branch, comment | The Code Review column is fully correct for real tickets | ✅ Done |
+| M3 | Delivery (GH-5 [gates and status moves](GH-5-cockpit-move-ticket-status.md), then deploy + attest; kubectl runtime deferred) | GitHub Actions + kubectl runtime · ancestry and patch-id · `deploy` blocks · `attest` with pins · gates and status moves (forward and back) | "In dev / in stage" is correct across the Deck Builder repos | In progress: GH-5 implemented, deploy + attest next |
+| M4 | Sessions | Workspaces and worktrees · Claude Code PTY · harness (inject, hooks, permissions) · `sdlc` MCP server · `prompt` blocks · Cockpit terminal · attention from hooks | A real ticket runs from build to merge through the Cockpit | Partly (PTY, hooks, session per ticket in M0–M2) |
+| M5 | Editor + polish | Pipeline editor (read/write YAML, validation) · first-run screen · ● Live · ? help · transitions | The PoC can be retired | — |
+| v1.1 | Next | Jenkins connector · mirror TUI permissions onto the graph · several projects | — | — |
 
 ---
 
@@ -397,5 +397,5 @@ Transitions: card → Cockpit (shared graph and title, the list slides in, the t
 ## 11. Open questions
 
 1. ~~Electron or Tauri, React or Svelte~~: **Electron + React**, decided in M0.
-2. **Default workspace location:** `~/.ticket-cockpit/workspaces` (proposed), or `.worktrees/` next to each checkout?
+2. ~~Default workspace location~~: **`~/.ticket-cockpit/workspaces`** (`AGENT_WORKSPACE_ROOT`), outside every repo, so a session never inherits another repo's `CLAUDE.md`. Decided 2026-11-18.
 3. **Which prompt templates to carry over from the PoC** for v1: build-ticket, address-review-feedback, resolve-conflict, fix-ci, diagnose-deploy-failure, promote-checklist, draft-pm-note, address-pm-feedback?

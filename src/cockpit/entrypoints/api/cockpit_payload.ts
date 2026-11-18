@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
 import { type ChangePromptRequestDTO, PROMPT_KINDS } from "@/cockpit/models/change_prompt";
 import { CockpitError } from "@/cockpit/models/errors";
+import type { StatusMoveRequestDTO } from "@/cockpit/models/status_move_action";
 
 const GITHUB_ORIGIN = "https://github.com";
 
@@ -43,6 +44,11 @@ const promptRequestSchema = z.object({
   threads: z.array(threadViewSchema),
 });
 
+const statusMoveRequestSchema = z.object({
+  ticketKey: z.string().min(1),
+  targetColumnIndex: z.number().int().nonnegative(),
+});
+
 export class InvalidCockpitPayloadError extends CockpitError {
   override readonly name: string = "InvalidCockpitPayloadError";
 }
@@ -61,6 +67,10 @@ export function readChangeAction(payload: unknown): ChangeActionDTO {
 
 export function readPromptRequest(payload: unknown): ChangePromptRequestDTO {
   return parse(promptRequestSchema, payload, "prompt request");
+}
+
+export function readStatusMoveRequest(payload: unknown): StatusMoveRequestDTO {
+  return parse(statusMoveRequestSchema, payload, "status move");
 }
 
 export function readGithubUrl(payload: unknown): string {

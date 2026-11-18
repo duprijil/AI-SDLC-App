@@ -2,6 +2,7 @@ import type { Change } from "@/change/models/change";
 import type { ChangeReview } from "@/change/models/change_review";
 import type { ReviewThread } from "@/change/models/review_thread";
 import type { TicketChange } from "@/change/models/ticket_changes";
+import type { ColumnMoveDTO } from "@/cockpit/models/column_move";
 import type { BlockTemplateDTO, ChangeCheck } from "@/pipeline/models/pipeline";
 
 export type BlockStateKind =
@@ -50,6 +51,7 @@ export interface BlockStateDTO {
   readonly isFinished: boolean;
   readonly change: ChangeViewDTO | null;
   readonly threads: readonly ThreadViewDTO[];
+  readonly moveTo: ColumnMoveDTO | null;
 }
 
 interface KindMeta {
@@ -120,6 +122,7 @@ interface BlockStateParts {
   readonly change?: ChangeViewDTO;
   readonly threads?: readonly ThreadViewDTO[];
   readonly caption?: string;
+  readonly moveTo?: ColumnMoveDTO | null;
 }
 
 function blockState(template: BlockTemplateDTO, kind: BlockStateKind, parts: BlockStateParts): BlockStateDTO {
@@ -133,6 +136,7 @@ function blockState(template: BlockTemplateDTO, kind: BlockStateKind, parts: Blo
     isFinished: meta.isFinished,
     change: parts.change ?? null,
     threads: parts.threads ?? [],
+    moveTo: parts.moveTo ?? null,
   };
 }
 
@@ -166,8 +170,14 @@ export const BlockState = {
     return blockState(template, "could_not_check", { title: template.title, caption: `could not check: ${reason}` });
   },
 
-  forTracker(template: BlockTemplateDTO, isDone: boolean): BlockStateDTO {
-    return blockState(template, isDone ? "tracker_done" : "tracker_open", { title: template.title });
+  forTracker(template: BlockTemplateDTO, isDone: boolean, moveTo: ColumnMoveDTO | null): BlockStateDTO {
+    if (isDone) {
+      return blockState(template, "tracker_done", { title: template.title });
+    }
+    return blockState(template, "tracker_open", {
+      title: template.title,
+      ...(moveTo === null ? {} : { caption: "waiting · click to move", moveTo }),
+    });
   },
 
   notCheckedYet(template: BlockTemplateDTO): BlockStateDTO {
