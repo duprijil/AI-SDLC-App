@@ -98,6 +98,9 @@ function CockpitApp(): ReactElement {
           ticketTitle: target.ticketTitle,
           change: target.block.change,
           threads: target.block.threads,
+          runUrls: target.block.deployLines.flatMap((line) =>
+            line.state === "failed" && line.runUrl !== null ? [line.runUrl] : [],
+          ),
         })
         .then((promptText) => {
           setPromptHandOff({ ticketKey: target.ticketKey, promptText, hasTimedOut: false });
@@ -130,6 +133,7 @@ function CockpitApp(): ReactElement {
             setPopoverTarget(null);
           }}
           onRunAction={sprintBoard.runChangeAction}
+          onTickAttestation={sprintBoard.tickAttestation}
           onSendPrompt={sendPrompt}
         />
       )}

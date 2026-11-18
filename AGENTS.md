@@ -45,8 +45,8 @@ The full list is proposed in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §
 | pipeline | normal | Project and pipeline config: load and validate (editing in M5) | [docs/domains/pipeline.md](docs/domains/pipeline.md) |
 | ticket | normal | Tracker tickets and board columns from Jira, with a SQLite cache, and status moves | [docs/domains/ticket.md](docs/domains/ticket.md) |
 | cockpit | combined | Desktop bootstrap, sprint board, refresh engine, block states, gates, attention; My tickets and Cockpit screens | [docs/domains/cockpit.md](docs/domains/cockpit.md) |
-| delivery | normal | Deploy runs, runtime state, "environment contains change" | planned |
-| attestation | normal | Human ticks pinned to deployed commits | planned |
+| delivery | normal | Deploy runs from GitHub Actions and "environment contains change" from local git (runtime state planned) | [docs/domains/delivery.md](docs/domains/delivery.md) |
+| attestation | normal | Human ticks pinned to deployed commits | [docs/domains/attestation.md](docs/domains/attestation.md) |
 
 ## Rules
 

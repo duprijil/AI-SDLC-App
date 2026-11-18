@@ -1,4 +1,5 @@
-import { ChangeQuery } from "@/change/models/change_query";
+import { AttestationError } from "@/attestation/models/errors";
+import type { FindAttestation } from "@/attestation/use_cases/find_attestation";
 import { ChangeError } from "@/change/models/errors";
 import type { ChangeListing, TicketChanges } from "@/change/models/ticket_changes";
 import type { FindTicketChanges } from "@/change/use_cases/find_ticket_changes";
@@ -6,10 +7,13 @@ import type { ListRecentChanges } from "@/change/use_cases/list_recent_changes";
 import type { FlowCachePort } from "@/cockpit/adapters/flow_cache_port";
 import { BlockState, type BlockStateDTO } from "@/cockpit/models/block_state";
 import { ColumnMove, type ColumnMoveDTO } from "@/cockpit/models/column_move";
+import { DeployView, type RepoDeployDTO } from "@/cockpit/models/deploy_view";
+import { ProjectQueries } from "@/cockpit/models/project_queries";
 import { RefreshProgress, type RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { BoardColumnViewDTO, SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import { type CheckedColumnDTO, type LevelFlowDTO, TicketFlow, type TicketFlowDTO } from "@/cockpit/models/ticket_flow";
-import type { FlowLevelDTO } from "@/pipeline/models/pipeline";
+import type { CheckTicketEnvironments } from "@/cockpit/use_cases/check_ticket_environments";
+import type { BlockTemplateDTO, FlowLevelDTO } from "@/pipeline/models/pipeline";
 import type { ProjectDefinition } from "@/pipeline/models/project_definition";
 
 const MAXIMUM_PARALLEL_TICKETS = 4;
@@ -29,6 +33,7 @@ interface TicketCheck {
   readonly card: TicketCardDTO;
   readonly columns: readonly BoardColumnViewDTO[];
   readonly changesOnce: () => Promise<TicketChanges>;
+  readonly environmentsOnce: (envName: string) => Promise<readonly RepoDeployDTO[]>;
   readonly onProgress: (progress: RefreshProgressDTO) => void;
 }
 
@@ -63,21 +68,29 @@ const isTrackerDone = (position: number, check: TicketCheck): boolean => {
 const trackerMoveFrom = (position: number, check: TicketCheck): ColumnMoveDTO | null =>
   position === check.card.columnIndex ? ColumnMove.forwardFrom(position, check.columns.length) : null;
 
+export interface RefreshSteps {
+  readonly listRecentChanges: ListRecentChanges;
+  readonly findTicketChanges: FindTicketChanges;
+  readonly checkTicketEnvironments: CheckTicketEnvironments;
+  readonly findAttestation: FindAttestation;
+  readonly flowCache: FlowCachePort;
+}
+
+const memoized = <Outcome>(produce: (key: string) => Promise<Outcome>): ((key: string) => Promise<Outcome>) => {
+  const pending = new Map<string, Promise<Outcome>>();
+  return (key) => {
+    const existing = pending.get(key) ?? produce(key);
+    pending.set(key, existing);
+    return existing;
+  };
+};
+
 export class RefreshTicketFlows {
-  readonly #listRecentChanges: ListRecentChanges;
-  readonly #findTicketChanges: FindTicketChanges;
-  readonly #flowCache: FlowCachePort;
+  readonly #steps: RefreshSteps;
   readonly #projectDefinition: ProjectDefinition;
 
-  constructor(
-    listRecentChanges: ListRecentChanges,
-    findTicketChanges: FindTicketChanges,
-    flowCache: FlowCachePort,
-    projectDefinition: ProjectDefinition,
-  ) {
-    this.#listRecentChanges = listRecentChanges;
-    this.#findTicketChanges = findTicketChanges;
-    this.#flowCache = flowCache;
+  constructor(steps: RefreshSteps, projectDefinition: ProjectDefinition) {
+    this.#steps = steps;
     this.#projectDefinition = projectDefinition;
   }
 
@@ -85,7 +98,7 @@ export class RefreshTicketFlows {
     let codeHostFailure: string | null = null;
     const listingOnce = once(async (): Promise<ChangeListing> => {
       try {
-        return await this.#listRecentChanges.execute(this.#changeQuery());
+        return await this.#steps.listRecentChanges.execute(ProjectQueries.changeQuery(this.#projectDefinition.project));
       } catch (error) {
         if (error instanceof ChangeError) {
           codeHostFailure = error.message;
@@ -96,15 +109,22 @@ export class RefreshTicketFlows {
     const cards = request.board.cards.filter((card) => request.ticketKeys.includes(card.ticketKey));
     const flows = new Map<string, TicketFlowDTO>();
     await forEachInParallel(cards, MAXIMUM_PARALLEL_TICKETS, async (card) => {
+      const changesOnce = once(async () =>
+        this.#steps.findTicketChanges.execute({ listing: await listingOnce(), ticketKey: card.ticketKey }),
+      );
       const flow = await this.#refreshTicket({
         card,
         columns: request.board.columns,
-        changesOnce: once(async () =>
-          this.#findTicketChanges.execute({ listing: await listingOnce(), ticketKey: card.ticketKey }),
+        changesOnce,
+        environmentsOnce: memoized(async (envName) =>
+          this.#steps.checkTicketEnvironments.execute({
+            changes: (await changesOnce()).changes.map((ticketChange) => ticketChange.change),
+            envName,
+          }),
         ),
         onProgress: request.onProgress,
       });
-      this.#flowCache.save(this.#projectDefinition.project.projectKey, flow);
+      this.#steps.flowCache.save(this.#projectDefinition.project.projectKey, flow);
       flows.set(card.ticketKey, flow);
     });
     return { flows, codeHostFailure };
@@ -165,11 +185,53 @@ export class RefreshTicketFlows {
     if (changeTemplate !== undefined) {
       return this.#checkChanges(changeTemplate, check);
     }
-    return level.blocks.map((template) =>
-      template.blockType === "tracker"
-        ? BlockState.forTracker(template, isTrackerDone(position, check), trackerMoveFrom(position, check))
-        : BlockState.notCheckedYet(template),
+    return Promise.all(level.blocks.map(async (template) => this.#checkBlock(template, position, check)));
+  }
+
+  async #checkBlock(template: BlockTemplateDTO, position: number, check: TicketCheck): Promise<BlockStateDTO> {
+    try {
+      switch (template.blockType) {
+        case "tracker":
+          return BlockState.forTracker(template, isTrackerDone(position, check), trackerMoveFrom(position, check));
+        case "deploy":
+          return BlockState.forDeploy(
+            template,
+            (await check.environmentsOnce(template.envName ?? "")).map((repo) => DeployView.lineOf(repo)),
+          );
+        case "attest":
+          return await this.#checkAttest(template, check);
+        default:
+          return BlockState.notCheckedYet(template);
+      }
+    } catch (error) {
+      if (error instanceof ChangeError || error instanceof AttestationError) {
+        return BlockState.changesUnavailable(template, error.message);
+      }
+      throw error;
+    }
+  }
+
+  async #checkAttest(template: BlockTemplateDTO, check: TicketCheck): Promise<BlockStateDTO> {
+    const envName = template.envName ?? "";
+    const pinned = DeployView.pins(await check.environmentsOnce(envName));
+    if ("waitReason" in pinned) {
+      return BlockState.attestWaits(template, pinned.waitReason);
+    }
+    const found = this.#steps.findAttestation.execute(
+      {
+        projectKey: this.#projectDefinition.project.projectKey,
+        ticketKey: check.card.ticketKey,
+        blockId: template.blockId,
+      },
+      pinned.pins,
     );
+    return BlockState.forAttest(template, found.status, {
+      envName,
+      currentPins: pinned.pins,
+      tickedPins: found.attestation?.pins ?? null,
+      tickedBy: found.attestation?.tickedBy ?? null,
+      tickedAt: found.attestation?.tickedAt ?? null,
+    });
   }
 
   async #checkChanges(template: FlowLevelDTO["blocks"][number], check: TicketCheck): Promise<readonly BlockStateDTO[]> {
@@ -187,14 +249,5 @@ export class RefreshTicketFlows {
       }
       throw error;
     }
-  }
-
-  #changeQuery(): ChangeQuery {
-    const project = this.#projectDefinition.project;
-    return ChangeQuery.create({
-      repos: project.repos.map((repo) => ({ repoName: repo.name, githubRepository: repo.githubRepository })),
-      keyPattern: project.code.keyPattern,
-      mergedDays: project.code.mergedDays,
-    });
   }
 }

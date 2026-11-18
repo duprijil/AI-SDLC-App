@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { sprintBoardBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
+import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
@@ -16,6 +17,7 @@ export interface SprintBoardState {
   readonly refreshTicket: (ticketKey: string) => void;
   readonly runChangeAction: (ticketKey: string, action: ChangeActionDTO) => Promise<string | null>;
   readonly moveStatus: (request: StatusMoveRequestDTO) => Promise<string | null>;
+  readonly tickAttestation: (request: AttestTickRequestDTO) => Promise<string | null>;
 }
 
 const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : "unknown");
@@ -112,6 +114,12 @@ export function useSprintBoard(): SprintBoardState {
     return result.failure;
   }, []);
 
+  const tickAttestation = useCallback(async (request: AttestTickRequestDTO): Promise<string | null> => {
+    const result = await sprintBoardBridge().tickAttestation(request);
+    setBoard((current) => replaceCard(current, result.card));
+    return result.failure;
+  }, []);
+
   const moveStatus = useCallback(async (request: StatusMoveRequestDTO): Promise<string | null> => {
     setRefreshingTicketKeys((keys) => toggled(keys, request.ticketKey, true));
     try {
@@ -160,5 +168,6 @@ export function useSprintBoard(): SprintBoardState {
     refreshTicket,
     runChangeAction,
     moveStatus,
+    tickAttestation,
   };
 }

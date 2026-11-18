@@ -21,7 +21,8 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 
 - Read both files, and validate their shape with zod and their rules with the models.
 - Report every problem at once, prefixed with the file it comes from.
-- Parse `code`, `repos[].envs`, `done_when` and `actions` loosely. They're validated by the milestones that use them.
+- Parse `repos[].path` (`~` expanded) and `repos[].envs`: `github_actions` (`workflow`, optional `branch`, `commit`), `manual` (optional `promote_link`), `none`, or `same_as: <env>`, resolved on load.
+- Parse `done_when` and `actions` of other blocks loosely. They're validated by the milestones that use them.
 
 ## Invariants
 
@@ -31,4 +32,7 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 - A `change` block sits in an `each_change` level and has `done_when: change.ready` or `change.merged`.
 - Column keys and block ids are snake_case and unique. A block id is unique across the whole pipeline.
 - Every level has at least one block, and an `each_change` level has exactly one.
+- A `deploy` block has `env`. An `attest` block has `pin: 'env("<env>").commits'` and `done_when: attested`. That env exists on at least one repo.
+- A repo with a `github_actions` env has `path`. `commit` is `run.head_sha`; the other sources are refused as not supported yet.
+- `same_as` points at an env of the same repo that has its own settings.
 - All of `projects/` is gitignored, because project files name real company systems. Nothing under it is committed.

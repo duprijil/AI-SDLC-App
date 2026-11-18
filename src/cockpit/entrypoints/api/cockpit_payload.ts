@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
 import { type ChangePromptRequestDTO, PROMPT_KINDS } from "@/cockpit/models/change_prompt";
 import { CockpitError } from "@/cockpit/models/errors";
@@ -42,6 +43,14 @@ const promptRequestSchema = z.object({
   ticketTitle: z.string(),
   change: changeViewSchema.nullable(),
   threads: z.array(threadViewSchema),
+  runUrls: z.array(z.url()).max(20).default([]),
+});
+
+const attestTickSchema = z.object({
+  ticketKey: z.string().min(1),
+  blockId: z.string().min(1),
+  envName: z.string().min(1),
+  expectedPins: z.record(z.string(), z.string()),
 });
 
 const statusMoveRequestSchema = z.object({
@@ -73,10 +82,15 @@ export function readStatusMoveRequest(payload: unknown): StatusMoveRequestDTO {
   return parse(statusMoveRequestSchema, payload, "status move");
 }
 
-export function readGithubUrl(payload: unknown): string {
+export function readAttestTick(payload: unknown): AttestTickRequestDTO {
+  return parse(attestTickSchema, payload, "attestation tick");
+}
+
+export function readExternalUrl(payload: unknown, configuredUrls: readonly string[]): string {
   const url = parse(z.string(), payload, "link");
-  if (!URL.canParse(url) || new URL(url).origin !== GITHUB_ORIGIN) {
-    throw new InvalidCockpitPayloadError(`Only GitHub links can be opened: ${url}`);
+  const isGithub = URL.canParse(url) && new URL(url).origin === GITHUB_ORIGIN;
+  if (!isGithub && !configuredUrls.includes(url)) {
+    throw new InvalidCockpitPayloadError(`Only GitHub links and promote links from project.yaml can be opened: ${url}`);
   }
   return url;
 }

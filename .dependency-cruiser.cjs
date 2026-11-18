@@ -1,4 +1,4 @@
-const NORMAL_DOMAINS = "(session|pipeline|ticket|change)";
+const NORMAL_DOMAINS = "(session|pipeline|ticket|change|delivery|attestation)";
 const COMBINED_DOMAINS = "(cockpit)";
 const ROOT_DELEGATES = "^src/(main\\.ts|preload\\.ts|renderer\\.ts)$";
 const RENDERER_ENTRY = "^src/renderer\\.ts$";

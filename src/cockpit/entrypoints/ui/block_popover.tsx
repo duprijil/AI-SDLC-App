@@ -2,7 +2,9 @@ import type { ReactElement, ReactNode } from "react";
 
 import { sprintBoardBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
 import { ConfirmButton } from "@/cockpit/entrypoints/ui/confirm_button";
+import { AttestDone, AttestTick, DeployLines } from "@/cockpit/entrypoints/ui/environment_parts";
 import { ThreadReply } from "@/cockpit/entrypoints/ui/thread_reply";
+import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { BlockStateDTO, BlockStateKind, ChangeViewDTO } from "@/cockpit/models/block_state";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
 import type { PromptKind } from "@/cockpit/models/change_prompt";
@@ -31,6 +33,7 @@ export interface BlockPopoverProps {
   readonly target: PopoverTarget;
   readonly onClose: () => void;
   readonly onRunAction: (ticketKey: string, action: ChangeActionDTO) => Promise<string | null>;
+  readonly onTickAttestation: (request: AttestTickRequestDTO) => Promise<string | null>;
   readonly onSendPrompt: (target: PopoverTarget, kind: PromptKind) => void;
 }
 
@@ -97,7 +100,42 @@ function changeAction(
   );
 }
 
+function attestTick(context: PopoverContext): ReactNode {
+  const attestation = context.target.block.attestation;
+  if (attestation === null) {
+    return null;
+  }
+  return (
+    <AttestTick
+      ticketKey={context.target.ticketKey}
+      block={context.target.block}
+      attestation={attestation}
+      onTick={context.onTickAttestation}
+      onDone={context.onClose}
+    />
+  );
+}
+
+const deployLines = (context: PopoverContext): ReactNode => <DeployLines block={context.target.block} />;
+
 const ACTIONS: Partial<Record<BlockStateKind, (context: PopoverContext) => ReactNode>> = {
+  deploy_na: deployLines,
+  deploy_done: deployLines,
+  deploy_running: deployLines,
+  deploy_partial: deployLines,
+  deploy_waiting: deployLines,
+  deploy_manual: deployLines,
+  deploy_failed: (context) => (
+    <>
+      <DeployLines block={context.target.block} />
+      <PromptButton context={context} kind="diagnose_deploy" label="Diagnose the deploy failure" />
+    </>
+  ),
+  could_not_check: (context) => (context.target.block.deployLines.length > 0 ? deployLines(context) : null),
+  attest_open: attestTick,
+  attest_stale: attestTick,
+  attest_done: (context) =>
+    context.target.block.attestation === null ? null : <AttestDone attestation={context.target.block.attestation} />,
   no_change: (context) => <PromptButton context={context} kind="build_ticket" label="Build the ticket" />,
   ci_failing: (context) => (
     <div className="row">

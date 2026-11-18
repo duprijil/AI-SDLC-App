@@ -12,6 +12,7 @@ Normal domain. Reads a project's pull requests from GitHub, judges their review 
 | Viewer | The GitHub user who owns `GITHUB_TOKEN`. Every judgment is made from their point of view |
 | Feedback | On the viewer's own PR: changes requested after the last commit, an open thread where someone else spoke last, or new human review comments since the last commit |
 | Change ref | What an action needs: PR id, repository, number, and the head commit it expects |
+| Merge commit | The commit a merged PR put on its base branch (`mergeCommit.oid`), used to check deployments |
 
 ## Responsibilities
 

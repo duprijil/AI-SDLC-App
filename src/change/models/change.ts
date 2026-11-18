@@ -23,6 +23,8 @@ export interface ChangeDTO {
   readonly isDraft: boolean;
   readonly updatedAt: string;
   readonly headCommitId: string;
+  readonly mergeCommitId: string | null;
+  readonly baseBranchName: string;
 }
 
 export class Change {
@@ -38,6 +40,8 @@ export class Change {
   readonly isDraft: boolean;
   readonly updatedAt: string;
   readonly headCommitId: string;
+  readonly mergeCommitId: string | null;
+  readonly baseBranchName: string;
 
   private constructor(change: ChangeDTO) {
     this.pullRequestId = change.pullRequestId;
@@ -52,6 +56,8 @@ export class Change {
     this.isDraft = change.isDraft;
     this.updatedAt = change.updatedAt;
     this.headCommitId = change.headCommitId;
+    this.mergeCommitId = change.mergeCommitId;
+    this.baseBranchName = change.baseBranchName;
   }
 
   static create(change: ChangeDTO): Change {
@@ -102,6 +108,8 @@ export class Change {
       isDraft: this.isDraft,
       updatedAt: this.updatedAt,
       headCommitId: this.headCommitId,
+      mergeCommitId: this.mergeCommitId,
+      baseBranchName: this.baseBranchName,
     };
   }
 }

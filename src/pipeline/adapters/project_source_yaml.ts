@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
 
 import { parseDocument } from "yaml";
 import { z } from "zod";
@@ -13,7 +14,13 @@ import {
   Pipeline,
   type PipelineColumnDTO,
 } from "@/pipeline/models/pipeline";
-import { MERGE_METHODS, Project } from "@/pipeline/models/project";
+import {
+  COMMIT_SOURCES,
+  type EnvironmentSourceDTO,
+  MERGE_METHODS,
+  Project,
+  type RepoSourceDTO,
+} from "@/pipeline/models/project";
 
 const PROJECT_FILE_NAME = "project.yaml";
 const PIPELINE_FILE_NAME = "pipeline.yaml";
@@ -23,6 +30,43 @@ const blockSchema = z.looseObject({
   type: z.enum(BLOCK_TYPES),
   title: z.string().min(1).optional(),
   done_when: z.string().optional(),
+  env: z.string().min(1).optional(),
+  pin: z.string().min(1).optional(),
+});
+
+const PIN_PATTERN = /^env\("([\w-]+)"\)\.commits$/;
+
+const environmentSchema = z.union([
+  z.literal("none").transform((): EnvironmentSourceDTO => ({ delivery: "none" })),
+  z
+    .looseObject({ same_as: z.string().min(1) })
+    .transform((environment): EnvironmentSourceDTO => ({ delivery: "same_as", envName: environment.same_as })),
+  z
+    .looseObject({
+      delivery: z.literal("github_actions"),
+      workflow: z.string().min(1),
+      branch: z.string().min(1).optional(),
+      commit: z.enum(COMMIT_SOURCES).default("run.head_sha"),
+    })
+    .transform((environment): EnvironmentSourceDTO => ({
+      delivery: "github_actions",
+      workflow: environment.workflow,
+      branch: environment.branch ?? null,
+      commitSource: environment.commit,
+    })),
+  z
+    .looseObject({ delivery: z.literal("manual"), promote_link: z.url().optional() })
+    .transform((environment): EnvironmentSourceDTO => ({
+      delivery: "manual",
+      promoteLink: environment.promote_link ?? null,
+    })),
+]);
+
+const repoSchema = z.looseObject({
+  name: z.string().min(1),
+  github: z.string().min(1),
+  path: z.string().min(1).optional(),
+  envs: z.record(z.string(), environmentSchema).default({}),
 });
 
 const levelSchema = z.union([z.array(blockSchema).min(1), z.looseObject({ each_change: blockSchema })]);
@@ -47,7 +91,7 @@ const projectSchema = z.looseObject({
     }),
     merge: z.looseObject({ method: z.enum(MERGE_METHODS).default("squash") }).default({ method: "squash" }),
   }),
-  repos: z.array(z.looseObject({ name: z.string().min(1), github: z.string().min(1) })).default([]),
+  repos: z.array(repoSchema).default([]),
 });
 
 const CHANGE_CHECK_BY_DONE_WHEN: Readonly<Record<string, ChangeCheck>> = {
@@ -63,11 +107,33 @@ const humanize = (blockId: string): string => {
   return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 };
 
+const envNameOf = (block: BlockEntry): string | null => {
+  if (block.type === "deploy") {
+    return block.env ?? null;
+  }
+  if (block.type === "attest") {
+    return PIN_PATTERN.exec(block.pin ?? "")?.[1] ?? null;
+  }
+  return null;
+};
+
 const toBlockTemplate = (block: BlockEntry): FlowLevelDTO["blocks"][number] => ({
   blockId: block.id,
   blockType: block.type,
   title: block.title ?? humanize(block.id),
   changeCheck: block.type === "change" ? (CHANGE_CHECK_BY_DONE_WHEN[block.done_when ?? ""] ?? null) : null,
+  envName: envNameOf(block),
+  doneWhen: block.done_when ?? null,
+});
+
+const expandHome = (path: string): string =>
+  path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : resolve(path);
+
+const toRepo = (repo: z.infer<typeof repoSchema>): RepoSourceDTO => ({
+  name: repo.name,
+  githubRepository: repo.github,
+  checkoutPath: repo.path === undefined ? null : expandHome(repo.path),
+  environments: repo.envs,
 });
 
 const toFlowLevel = (level: LevelEntry): FlowLevelDTO =>
@@ -100,7 +166,7 @@ export class ProjectSourceYaml implements ProjectSourcePort {
           mergedDays: entry.code.link.merged_days,
           mergeMethod: entry.code.merge.method,
         },
-        repos: entry.repos.map((repo) => ({ name: repo.name, githubRepository: repo.github })),
+        repos: entry.repos.map(toRepo),
       }),
     );
   }

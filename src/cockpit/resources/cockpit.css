@@ -955,3 +955,27 @@ button.blk:hover {
   gap: 8px;
   align-items: center;
 }
+
+.deploy-line {
+  border: 1px solid var(--line2);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deploy-line.dl-done {
+  border-left-color: var(--ok-bd);
+}
+
+.deploy-line.dl-failed,
+.deploy-line.dl-could_not_check {
+  border-left-color: var(--fail-bd);
+}
+
+.deploy-line.dl-running,
+.deploy-line.dl-waiting {
+  border-left-color: var(--warn-bd);
+}

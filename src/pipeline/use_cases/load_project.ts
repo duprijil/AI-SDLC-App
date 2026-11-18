@@ -18,7 +18,7 @@ export class LoadProject {
     if (project === null || pipeline === null) {
       throw new InvalidProjectConfigError(problems);
     }
-    return new ProjectDefinition(project, pipeline);
+    return ProjectDefinition.combine(project, pipeline);
   }
 
   #collect<Loaded extends Project | Pipeline>(load: () => Loaded, problems: string[]): Loaded | null {
