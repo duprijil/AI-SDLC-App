@@ -6,6 +6,7 @@ import { BriefStoreMemory } from "@/cockpit/adapters/brief_store_memory";
 import type { BriefStorePort } from "@/cockpit/adapters/brief_store_port";
 import type { FlowCachePort } from "@/cockpit/adapters/flow_cache_port";
 import { FlowCacheSqlite } from "@/cockpit/adapters/flow_cache_sqlite";
+import { AgentActionsCockpit, type AgentActionSteps } from "@/cockpit/entrypoints/api/agent_actions_cockpit";
 import { type AgentActivity, Attention } from "@/cockpit/models/attention";
 import { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
@@ -129,6 +130,7 @@ export class CockpitContainer {
         checkTicketEnvironments: this.#checkTicketEnvironments(),
         findAttestation: this.#attestationContainer.findAttestation(),
         findCheckpoint: this.#sessionContainer.findCheckpoint(),
+        findDrafts: this.#sessionContainer.findDrafts(),
         flowCache: this.#flowCache,
       },
       this.#projectDefinition,
@@ -210,6 +212,19 @@ export class CockpitContainer {
 
   writeDefaultPrompts(): readonly string[] {
     return this.#pipelineContainer.writeDefaultPrompts().execute(this.#projectDefinition.project.projectKey);
+  }
+
+  agentActions(hooks: Pick<AgentActionSteps, "cachedBoard" | "refreshTicket">): AgentActionsCockpit {
+    return new AgentActionsCockpit({
+      ...hooks,
+      prepareTicketWorkspace: this.prepareTicketWorkspace(),
+      runChangeAction: this.runChangeAction(),
+      recordDraft: this.#sessionContainer.recordDraft(),
+      findDrafts: this.#sessionContainer.findDrafts(),
+      useDraft: this.#sessionContainer.useDraft(),
+      recordCheckpoint: this.#sessionContainer.recordCheckpoint(),
+      pipeline: this.#projectDefinition.pipeline,
+    });
   }
 
   endFinishedSessions(): EndFinishedSessions {

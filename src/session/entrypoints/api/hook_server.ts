@@ -2,7 +2,9 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import type { AgentActionsPort } from "@/session/adapters/agent_actions_port";
 import { readJsonText } from "@/session/entrypoints/api/ipc_payload";
+import { handleSdlcRequest } from "@/session/entrypoints/api/sdlc_mcp_server";
 import type { SessionContainer } from "@/session/entrypoints/container";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import { SessionError } from "@/session/models/errors";
@@ -11,6 +13,7 @@ import { HookEvent } from "@/session/models/hook_event";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const HOOK_PATH = "/hooks";
+const MCP_PATH = "/mcp";
 const TOKEN_HEADER = "x-cockpit-token";
 const TOKEN_BYTES = 32;
 const MAXIMUM_BODY_BYTES = 1_048_576;
@@ -66,9 +69,24 @@ function rejectionStatus(error: unknown): number {
   return error instanceof SessionError || error instanceof SyntaxError ? STATUS_BAD_REQUEST : STATUS_NOT_FOUND;
 }
 
+async function acceptMcp(
+  request: IncomingMessage,
+  response: ServerResponse,
+  container: SessionContainer,
+  actions: AgentActionsPort,
+): Promise<void> {
+  const ticketKey = container.resolveAgentTicket().execute(String(request.headers[TOKEN_HEADER] ?? ""));
+  if (ticketKey === null) {
+    throw new HookRequestRejectedError("Invalid MCP token", STATUS_UNAUTHORIZED);
+  }
+  const body: unknown = request.method === "POST" ? JSON.parse(await readBody(request)) : undefined;
+  await handleSdlcRequest(request, response, body, { ticketKey, actions });
+}
+
 export async function startHookServer(
   container: SessionContainer,
   onSessionChanged: SessionChangedListener,
+  agentActions: AgentActionsPort,
 ): Promise<HookServer> {
   const logger = container.logger("session.hook_server");
   const token = randomBytes(TOKEN_BYTES).toString("hex");
@@ -86,16 +104,22 @@ export async function startHookServer(
   };
 
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    acceptHook(request)
-      .then(() => response.writeHead(STATUS_NO_CONTENT).end())
-      .catch((error: unknown) => {
-        const statusCode = rejectionStatus(error);
-        logger.error("Hook request rejected", {
-          statusCode,
-          reason: error instanceof Error ? error.message : "unknown",
-        });
-        response.writeHead(statusCode).end();
+    const handled =
+      request.url === MCP_PATH
+        ? acceptMcp(request, response, container, agentActions)
+        : acceptHook(request).then(() => {
+            response.writeHead(STATUS_NO_CONTENT).end();
+          });
+    handled.catch((error: unknown) => {
+      const statusCode = rejectionStatus(error);
+      logger.error("Hook request rejected", {
+        statusCode,
+        reason: error instanceof Error ? error.message : "unknown",
       });
+      if (!response.headersSent) {
+        response.writeHead(statusCode).end();
+      }
+    });
   });
 
   await new Promise<void>((resolveListening) => {

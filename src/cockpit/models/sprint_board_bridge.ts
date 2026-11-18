@@ -29,6 +29,7 @@ export const SPRINT_BOARD_CHANNEL = Object.freeze({
   attestTick: "attest:tick",
   checkpoint: "prompt:checkpoint",
   writeDefaultPrompts: "prompts:write-defaults",
+  card: "board:card",
 });
 
 export interface AttentionChangeDTO {
@@ -56,4 +57,5 @@ export interface SprintBoardBridge {
   openExternal(url: string): Promise<void>;
   onProgress(listener: (progress: RefreshProgressDTO) => void): Unsubscribe;
   onAttention(listener: (change: AttentionChangeDTO) => void): Unsubscribe;
+  onCard(listener: (card: TicketCardDTO) => void): Unsubscribe;
 }

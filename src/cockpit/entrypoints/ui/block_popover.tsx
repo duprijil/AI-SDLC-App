@@ -102,6 +102,7 @@ const BUILT_IN_PROMPT_KINDS: readonly BlockStateKind[] = [
   "ci_failing",
   "conflict",
   "feedback",
+  "drafted",
   "deploy_failed",
   "prompt_open",
   "prompt_done",
@@ -115,9 +116,25 @@ function PipelinePrompt({ context }: { readonly context: PopoverContext }): Reac
   return <PromptButton context={context} kind="block_prompt" label={`Send ${block.promptTemplates.join(", ")}`} />;
 }
 
+function NoteDraft({ note }: { readonly note: string }): ReactElement {
+  return (
+    <div className="thread">
+      <div className="thread-head">Note drafted by Claude Code</div>
+      <div className="quote">{note}</div>
+      <div className="row">
+        <button type="button" className="btn" onClick={() => void navigator.clipboard.writeText(note)}>
+          Copy
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function promptBlock(context: PopoverContext): ReactNode {
+  const note = context.target.block.noteDraft;
   return (
     <>
+      {note !== null && <NoteDraft note={note} />}
       <PromptButton context={context} kind="block_prompt" label="Send" />
       <CheckpointForm
         ticketKey={context.target.ticketKey}
@@ -167,6 +184,22 @@ function attestTick(context: PopoverContext): ReactNode {
 
 const deployLines = (context: PopoverContext): ReactNode => <DeployLines block={context.target.block} />;
 
+function feedbackActions(context: PopoverContext): ReactNode {
+  return (
+    <>
+      {context.target.block.threads.map((thread) => (
+        <ThreadReply
+          key={thread.threadId}
+          thread={thread}
+          onRunAction={(action) => context.onRunAction(context.target.ticketKey, action)}
+          onDone={context.onClose}
+        />
+      ))}
+      <PromptButton context={context} kind="address_feedback" label="Address the feedback" />
+    </>
+  );
+}
+
 const ACTIONS: Partial<Record<BlockStateKind, (context: PopoverContext) => ReactNode>> = {
   deploy_na: deployLines,
   deploy_done: deployLines,
@@ -203,19 +236,9 @@ const ACTIONS: Partial<Record<BlockStateKind, (context: PopoverContext) => React
     </div>
   ),
   conflict: (context) => <PromptButton context={context} kind="resolve_conflict" label="Resolve the conflict" />,
-  feedback: (context) => (
-    <>
-      {context.target.block.threads.map((thread) => (
-        <ThreadReply
-          key={thread.threadId}
-          thread={thread}
-          onRunAction={(action) => context.onRunAction(context.target.ticketKey, action)}
-          onDone={context.onClose}
-        />
-      ))}
-      <PromptButton context={context} kind="address_feedback" label="Address the feedback" />
-    </>
-  ),
+  drafted: (context) => feedbackActions(context),
+  feedback: (context) => feedbackActions(context),
+
   behind: (context) =>
     changeAction(
       context,

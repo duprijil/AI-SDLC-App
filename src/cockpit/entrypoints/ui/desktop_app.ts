@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { app, BrowserWindow, dialog } from "electron";
 
-import { publishAttention, registerCockpitIpc } from "@/cockpit/entrypoints/api/cockpit_ipc";
+import { publishAttention, refreshAndPublishTicket, registerCockpitIpc } from "@/cockpit/entrypoints/api/cockpit_ipc";
 import { CockpitContainer } from "@/cockpit/entrypoints/container";
 import type { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
@@ -48,10 +48,22 @@ async function loadRenderer(window: BrowserWindow, settings: DesktopWindowSettin
 async function openCockpit(container: CockpitContainer): Promise<void> {
   const settings = container.desktopWindowSettings();
   const window = createWindow(settings);
-  const hookServer = await startHookServer(container.session(), (session) => {
-    publishSessionStatus(window.webContents, session);
-    publishAttention(window.webContents, container, session);
+  const agentActions = container.agentActions({
+    cachedBoard: () =>
+      container
+        .showCachedSprintBoard()
+        .execute((key) => container.agentActivityOf(key))
+        ?.toDTO() ?? null,
+    refreshTicket: (ticketKey) => refreshAndPublishTicket(container, ticketKey, window.webContents),
   });
+  const hookServer = await startHookServer(
+    container.session(),
+    (session) => {
+      publishSessionStatus(window.webContents, session);
+      publishAttention(window.webContents, container, session);
+    },
+    agentActions,
+  );
   registerSessionIpc({
     container: container.session(),
     hookEndpoint: hookServer.endpoint,

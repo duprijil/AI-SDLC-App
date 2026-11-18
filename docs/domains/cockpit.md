@@ -49,6 +49,8 @@ The renderer's view of "the container" is the two bridges. Each bridge call runs
 - After a forward move, send the tracker block's `actions.open` and the gate's `then` prompts.
 - Show `prompt` blocks as open until they're ticked, from the popover.
 - End a ticket's session when it's moved to the last column, or first seen there in a Refresh all.
+- Implement the session's agent actions (`agent_actions_cockpit`): answer `get_context` from the cached flow and the workspace brief; check that every PR, thread and prompt block named by the agent belongs to the session's ticket; reuse the popover's merge and reply code paths; refresh the ticket and push the new card to the renderer (`board:card`) after each action.
+- Show drafts: a feedback change block with a drafted reply is **drafted** ("Needs you"), and its reply box is pre-filled; a prompt block shows its drafted note with Copy. Posting a reply marks its draft used.
 - Recompute a ticket's attention whenever its session's hook status changes.
 - Sort cards by column, furthest first, then by key.
 - Open a ticket in the Cockpit with a view transition (shared title and graph, list sliding in, terminal rising), and give every ticket its own Claude Code session.

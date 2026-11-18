@@ -49,3 +49,11 @@ export class SessionRecordError extends SessionError {
 export class InvalidCheckpointError extends SessionError {
   override readonly name: string = "InvalidCheckpointError";
 }
+
+export class InvalidDraftError extends SessionError {
+  override readonly name: string = "InvalidDraftError";
+}
+
+export class AgentActionRefusedError extends SessionError {
+  override readonly name: string = "AgentActionRefusedError";
+}

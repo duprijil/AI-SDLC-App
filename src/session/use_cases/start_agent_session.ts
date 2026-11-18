@@ -1,6 +1,8 @@
 import type { AgentCliPort } from "@/session/adapters/agent_cli_port";
+import type { AgentTokenPort } from "@/session/adapters/agent_token_port";
 import type { AgentTranscriptPort } from "@/session/adapters/agent_transcript_port";
 import type { HookSettingsPort } from "@/session/adapters/hook_settings_port";
+import type { McpConfigPort } from "@/session/adapters/mcp_config_port";
 import type { PtyListener, PtyPort } from "@/session/adapters/pty_port";
 import type { SessionRecordPort } from "@/session/adapters/session_record_port";
 import type { SessionStorePort } from "@/session/adapters/session_store_port";
@@ -29,6 +31,8 @@ export interface SessionStartPorts {
   readonly hookSettings: HookSettingsPort;
   readonly agentCli: AgentCliPort;
   readonly agentTranscript: AgentTranscriptPort;
+  readonly agentTokens: AgentTokenPort;
+  readonly mcpConfig: McpConfigPort;
 }
 
 interface Launch {
@@ -76,7 +80,14 @@ export class StartAgentSession {
   }
 
   #spawn(launch: Launch): AgentSession {
-    const settingsFilePath = this.#ports.hookSettings.write(launch.sessionId, launch.request.hookEndpoint);
+    const files = {
+      settingsFilePath: this.#ports.hookSettings.write(launch.sessionId, launch.request.hookEndpoint),
+      mcpConfigFilePath: this.#ports.mcpConfig.write({
+        sessionId: launch.sessionId,
+        url: launch.request.hookEndpoint.mcpUrl(),
+        token: this.#ports.agentTokens.issue(launch.sessionId),
+      }),
+    };
     const session = AgentSession.start({
       sessionId: launch.sessionId,
       ticketKey: launch.request.ticketKey,
@@ -84,8 +95,8 @@ export class StartAgentSession {
     });
     this.#ports.sessionStore.save(session);
     const launchCommand = launch.isResume
-      ? this.#ports.agentCli.resumeCommand(launch.sessionId, settingsFilePath)
-      : this.#ports.agentCli.launchCommand(launch.sessionId, settingsFilePath);
+      ? this.#ports.agentCli.resumeCommand(launch.sessionId, files)
+      : this.#ports.agentCli.launchCommand(launch.sessionId, files);
     const listener = launch.isResume
       ? this.#resumeTracking(launch)
       : this.#tracking(launch.sessionId, launch.request.listener);

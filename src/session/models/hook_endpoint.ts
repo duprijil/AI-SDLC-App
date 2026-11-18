@@ -30,6 +30,10 @@ export class HookEndpoint {
     return new HookEndpoint(endpoint.url, endpoint.token);
   }
 
+  mcpUrl(): string {
+    return this.url.replace(/\/hooks$/, "/mcp");
+  }
+
   acceptsToken(token: string): boolean {
     return token === this.token;
   }

@@ -25,6 +25,7 @@ const threadViewSchema = z.object({
   location: z.string(),
   lastAuthorLogin: z.string(),
   lastCommentBody: z.string(),
+  draftText: z.string().nullable().default(null),
 });
 
 const changeActionSchema = z.discriminatedUnion("kind", [

@@ -15,8 +15,10 @@ import { type CheckedColumnDTO, type LevelFlowDTO, TicketFlow, type TicketFlowDT
 import type { CheckTicketEnvironments } from "@/cockpit/use_cases/check_ticket_environments";
 import type { BlockTemplateDTO, FlowLevelDTO } from "@/pipeline/models/pipeline";
 import type { ProjectDefinition } from "@/pipeline/models/project_definition";
+import type { DraftDTO } from "@/session/models/draft";
 import { SessionError } from "@/session/models/errors";
 import type { FindCheckpoint } from "@/session/use_cases/find_checkpoint";
+import type { FindDrafts } from "@/session/use_cases/find_drafts";
 
 const MAXIMUM_PARALLEL_TICKETS = 4;
 
@@ -36,6 +38,7 @@ interface TicketCheck {
   readonly columns: readonly BoardColumnViewDTO[];
   readonly changesOnce: () => Promise<TicketChanges>;
   readonly environmentsOnce: (envName: string) => Promise<readonly RepoDeployDTO[]>;
+  readonly drafts: readonly DraftDTO[];
   readonly onProgress: (progress: RefreshProgressDTO) => void;
 }
 
@@ -76,6 +79,7 @@ export interface RefreshSteps {
   readonly checkTicketEnvironments: CheckTicketEnvironments;
   readonly findAttestation: FindAttestation;
   readonly findCheckpoint: FindCheckpoint;
+  readonly findDrafts: FindDrafts;
   readonly flowCache: FlowCachePort;
 }
 
@@ -125,6 +129,7 @@ export class RefreshTicketFlows {
             envName,
           }),
         ),
+        drafts: this.#draftsFor(card.ticketKey),
         onProgress: request.onProgress,
       });
       this.#steps.flowCache.save(this.#projectDefinition.project.projectKey, flow);
@@ -218,7 +223,19 @@ export class RefreshTicketFlows {
 
   #checkPrompt(template: BlockTemplateDTO, check: TicketCheck): BlockStateDTO {
     const checkpoint = this.#steps.findCheckpoint.execute(check.card.ticketKey, template.blockId);
-    return BlockState.forPrompt(template, checkpoint?.state === "done", checkpoint?.note ?? null);
+    const block = BlockState.forPrompt(template, checkpoint?.state === "done", checkpoint?.note ?? null);
+    return BlockState.withDrafts(block, template, check.drafts);
+  }
+
+  #draftsFor(ticketKey: string): readonly DraftDTO[] {
+    try {
+      return this.#steps.findDrafts.execute(ticketKey);
+    } catch (error) {
+      if (error instanceof SessionError) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async #checkAttest(template: BlockTemplateDTO, check: TicketCheck): Promise<BlockStateDTO> {
@@ -251,7 +268,11 @@ export class RefreshTicketFlows {
         return [BlockState.noChange(template)];
       }
       return ticketChanges.changes.map((ticketChange) =>
-        BlockState.forChange(template, ticketChange, ticketChanges.viewerLogin),
+        BlockState.withDrafts(
+          BlockState.forChange(template, ticketChange, ticketChanges.viewerLogin),
+          template,
+          check.drafts,
+        ),
       );
     } catch (error) {
       if (error instanceof ChangeError) {

@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
 import type { ChangeActionResultDTO } from "@/cockpit/models/change_action";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
-import type { SprintBoardDTO } from "@/cockpit/models/sprint_board";
+import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import {
   type AttentionChangeDTO,
   SPRINT_BOARD_BRIDGE_GLOBAL,
@@ -83,6 +83,10 @@ const sprintBoardBridge: SprintBoardBridge = {
   onProgress: (listener) =>
     subscribe(SPRINT_BOARD_CHANNEL.progress, (_event, progress) => {
       listener(progress as RefreshProgressDTO);
+    }),
+  onCard: (listener) =>
+    subscribe(SPRINT_BOARD_CHANNEL.card, (_event, card) => {
+      listener(card as TicketCardDTO);
     }),
   onAttention: (listener) =>
     subscribe(SPRINT_BOARD_CHANNEL.attention, (_event, change) => {
