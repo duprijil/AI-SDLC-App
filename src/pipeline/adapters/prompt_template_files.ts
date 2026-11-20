@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import type { PromptTemplatePort } from "@/pipeline/adapters/prompt_template_port";
 import { PromptTemplateError } from "@/pipeline/models/errors";
 import { PromptTemplate } from "@/pipeline/models/prompt_template";
+
+const PROMPTS_FOLDER = "prompts";
 
 export class PromptTemplateFiles implements PromptTemplatePort {
   readonly #projectsRootPath: string;
@@ -21,6 +23,21 @@ export class PromptTemplateFiles implements PromptTemplatePort {
       return readFileSync(filePath, "utf8");
     } catch (cause) {
       throw new PromptTemplateError(`Could not read ${templateName}`, { cause });
+    }
+  }
+
+  list(projectKey: string): readonly string[] {
+    const folder = join(this.#projectsRootPath, projectKey, PROMPTS_FOLDER);
+    if (!existsSync(folder)) {
+      return [];
+    }
+    try {
+      return readdirSync(folder)
+        .map((fileName) => `${PROMPTS_FOLDER}/${fileName}`)
+        .filter((templateName) => PromptTemplate.isName(templateName))
+        .sort();
+    } catch (cause) {
+      throw new PromptTemplateError(`Could not list ${folder}`, { cause });
     }
   }
 

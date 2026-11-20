@@ -50,6 +50,7 @@ The renderer's view of "the container" is the two bridges. Each bridge call runs
 - Show `prompt` blocks as open until they're ticked, from the popover.
 - End a ticket's session when it's moved to the last column, or first seen there in a Refresh all.
 - Implement the session's agent actions (`agent_actions_cockpit`): answer `get_context` from the cached flow and the workspace brief; check that every PR, thread and prompt block named by the agent belongs to the session's ticket; reuse the popover's merge and reply code paths; refresh the ticket and push the new card to the renderer (`board:card`) after each action.
+- Run the Pipeline editor screen: open the draft with the board's columns, envs and prompt files, check each edit, save, then reload the project definition in place and run Refresh all. Leaving with unsaved edits asks first.
 - Show drafts: a feedback change block with a drafted reply is **drafted** ("Needs you"), and its reply box is pre-filled; a prompt block shows its drafted note with Copy. Posting a reply marks its draft used.
 - Recompute a ticket's attention whenever its session's hook status changes.
 - Sort cards by column, furthest first, then by key.

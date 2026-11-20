@@ -201,13 +201,21 @@ export class ProjectSourceYaml implements ProjectSourcePort {
 
   loadPipeline(projectKey: string): Pipeline {
     const displayPath = this.#displayPath(projectKey, PIPELINE_FILE_NAME);
-    const entry = this.#parse(projectKey, PIPELINE_FILE_NAME, pipelineSchema);
-    const columns: PipelineColumnDTO[] = Object.entries(entry.columns).map(([columnKey, column]) => ({
+    const columns = this.#pipelineColumns(this.#parse(projectKey, PIPELINE_FILE_NAME, pipelineSchema));
+    return this.#build(displayPath, () => Pipeline.create({ columns }));
+  }
+
+  pipelineColumnsFromText(projectKey: string, text: string): readonly PipelineColumnDTO[] {
+    const displayPath = this.#displayPath(projectKey, PIPELINE_FILE_NAME);
+    return this.#pipelineColumns(this.#parseText(displayPath, text, pipelineSchema));
+  }
+
+  #pipelineColumns(entry: z.infer<typeof pipelineSchema>): readonly PipelineColumnDTO[] {
+    return Object.entries(entry.columns).map(([columnKey, column]) => ({
       columnKey,
       levels: column.flow.map(toFlowLevel),
       gatePrompts: sessionPromptsOf(column.gate?.then ?? []),
     }));
-    return this.#build(displayPath, () => Pipeline.create({ columns }));
   }
 
   #parse<Schema extends z.ZodType>(projectKey: string, fileName: string, schema: Schema): z.infer<Schema> {
@@ -216,7 +224,11 @@ export class ProjectSourceYaml implements ProjectSourcePort {
     if (!existsSync(filePath)) {
       throw new InvalidProjectConfigError([`${displayPath}: file is missing`]);
     }
-    const document = parseDocument(readFileSync(filePath, "utf8"));
+    return this.#parseText(displayPath, readFileSync(filePath, "utf8"), schema);
+  }
+
+  #parseText<Schema extends z.ZodType>(displayPath: string, text: string, schema: Schema): z.infer<Schema> {
+    const document = parseDocument(text);
     if (document.errors.length > 0) {
       throw new InvalidProjectConfigError(document.errors.map((error) => `${displayPath}: ${error.message}`));
     }

@@ -4,8 +4,11 @@ import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO } from "@/cockpit/models/change_action";
 import type { CheckpointRequestDTO } from "@/cockpit/models/checkpoint_action";
 import { CockpitError } from "@/cockpit/models/errors";
+import type { PipelineCheckRequestDTO, PipelineSaveRequestDTO } from "@/cockpit/models/pipeline_editor";
 import { PROMPT_KINDS, type PromptRequestDTO } from "@/cockpit/models/prompt_request";
 import type { StatusMoveRequestDTO } from "@/cockpit/models/status_move_action";
+import { BLOCK_TYPES } from "@/pipeline/models/pipeline";
+import { EDITABLE_BLOCK_FIELDS } from "@/pipeline/models/pipeline_edit";
 
 const GITHUB_ORIGIN = "https://github.com";
 
@@ -68,6 +71,39 @@ const statusMoveRequestSchema = z.object({
   targetColumnIndex: z.number().int().nonnegative(),
 });
 
+const blockIdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
+const columnKeySchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
+const templateNamesSchema = z.array(z.string().min(1)).max(10);
+
+const pipelineEditSchema = z.discriminatedUnion("op", [
+  z.object({
+    op: z.literal("set_block_field"),
+    blockId: blockIdSchema,
+    field: z.enum(EDITABLE_BLOCK_FIELDS),
+    value: z.string().max(500).nullable(),
+  }),
+  z.object({ op: z.literal("set_runs"), blockId: blockIdSchema, runsPerChange: z.boolean() }),
+  z.object({ op: z.literal("add_level"), columnKey: columnKeySchema }),
+  z.object({
+    op: z.literal("add_block"),
+    columnKey: columnKeySchema,
+    levelIndex: z.number().int().nonnegative(),
+    blockId: blockIdSchema,
+    blockType: z.enum(BLOCK_TYPES),
+  }),
+  z.object({ op: z.literal("move_block"), blockId: blockIdSchema, direction: z.enum(["up", "down"]) }),
+  z.object({ op: z.literal("remove_block"), blockId: blockIdSchema }),
+  z.object({
+    op: z.literal("set_state_prompts"),
+    blockId: blockIdSchema,
+    state: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    templateNames: templateNamesSchema,
+  }),
+  z.object({ op: z.literal("set_gate_prompts"), columnKey: columnKeySchema, templateNames: templateNamesSchema }),
+]);
+
+const pipelineEditsSchema = z.array(pipelineEditSchema).max(500);
+
 export class InvalidCockpitPayloadError extends CockpitError {
   override readonly name: string = "InvalidCockpitPayloadError";
 }
@@ -98,6 +134,14 @@ export function readStatusMoveRequest(payload: unknown): StatusMoveRequestDTO {
 
 export function readAttestTick(payload: unknown): AttestTickRequestDTO {
   return parse(attestTickSchema, payload, "attestation tick");
+}
+
+export function readPipelineCheck(payload: unknown): PipelineCheckRequestDTO {
+  return parse(z.object({ edits: pipelineEditsSchema }), payload, "pipeline check");
+}
+
+export function readPipelineSave(payload: unknown): PipelineSaveRequestDTO {
+  return parse(z.object({ expectedHash: z.string().min(1), edits: pipelineEditsSchema }), payload, "pipeline save");
 }
 
 export function readExternalUrl(payload: unknown, configuredUrls: readonly string[]): string {

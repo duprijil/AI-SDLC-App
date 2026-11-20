@@ -7,12 +7,15 @@ import {
   readChangeAction,
   readCheckpointRequest,
   readExternalUrl,
+  readPipelineCheck,
+  readPipelineSave,
   readPromptRequest,
   readStatusMoveRequest,
 } from "@/cockpit/entrypoints/api/cockpit_payload";
 import type { CockpitContainer } from "@/cockpit/entrypoints/container";
 import type { ChangeActionResultDTO } from "@/cockpit/models/change_action";
 import { CockpitConfigurationError, CockpitError } from "@/cockpit/models/errors";
+import type { EditorColumnDTO, PipelineEditorDTO, PipelineSaveResultDTO } from "@/cockpit/models/pipeline_editor";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import {
@@ -22,6 +25,8 @@ import {
 } from "@/cockpit/models/sprint_board_bridge";
 import type { StatusMovePreviewDTO, StatusMoveResultDTO } from "@/cockpit/models/status_move_action";
 import { DeliveryError } from "@/delivery/models/errors";
+import { PipelineError, PipelineFileChangedError } from "@/pipeline/models/errors";
+import type { PipelineDraftDTO } from "@/pipeline/models/pipeline_draft";
 import { readText } from "@/session/entrypoints/api/ipc_payload";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import { SessionError } from "@/session/models/errors";
@@ -230,6 +235,38 @@ export function registerCockpitIpc(options: CockpitIpcOptions): void {
       return { failure, card: refreshed.card };
     },
   );
+
+  const boardColumns = (): readonly EditorColumnDTO[] =>
+    (container.showCachedSprintBoard().execute(activityOf)?.toDTO().columns ?? []).map((column) => ({
+      columnKey: column.columnKey,
+      name: column.name,
+    }));
+
+  ipcMain.handle(SPRINT_BOARD_CHANNEL.pipelineOpen, (): PipelineEditorDTO => container.pipelineEditor(boardColumns()));
+
+  ipcMain.handle(SPRINT_BOARD_CHANNEL.pipelineCheck, (_event, requestPayload: unknown): PipelineDraftDTO =>
+    container.checkPipelineDraft(boardColumns(), readPipelineCheck(requestPayload).edits),
+  );
+
+  ipcMain.handle(SPRINT_BOARD_CHANNEL.pipelineSave, (_event, requestPayload: unknown): PipelineSaveResultDTO => {
+    try {
+      const draft = container.savePipelineDraft(boardColumns(), readPipelineSave(requestPayload));
+      const problems = container.reloadProject();
+      return {
+        failure:
+          problems.length === 0
+            ? null
+            : `Saved, but the app couldn't reload it: ${problems.join("; ")}. Restart the app.`,
+        hasChangedOnDisk: false,
+        draft,
+      };
+    } catch (error) {
+      if (!(error instanceof PipelineError)) {
+        throw error;
+      }
+      return { failure: error.message, hasChangedOnDisk: error instanceof PipelineFileChangedError, draft: null };
+    }
+  });
 
   ipcMain.handle(SPRINT_BOARD_CHANNEL.writeDefaultPrompts, (): readonly string[] => container.writeDefaultPrompts());
 

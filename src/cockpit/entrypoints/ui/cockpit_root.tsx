@@ -8,7 +8,9 @@ import { BlockPopover, type PopoverTarget } from "@/cockpit/entrypoints/ui/block
 import { sprintBoardBridge } from "@/cockpit/entrypoints/ui/cockpit_bridges";
 import { CockpitScreen, type PromptHandOff } from "@/cockpit/entrypoints/ui/cockpit_screen";
 import { MyTicketsScreen } from "@/cockpit/entrypoints/ui/my_tickets_screen";
+import { PipelineEditorScreen } from "@/cockpit/entrypoints/ui/pipeline_editor_screen";
 import { StatusMovePopover, type StatusMoveTarget } from "@/cockpit/entrypoints/ui/status_move_popover";
+import { usePipelineDraft } from "@/cockpit/entrypoints/ui/use_pipeline_draft";
 import { useSprintBoard } from "@/cockpit/entrypoints/ui/use_sprint_board";
 import type { BlockStateDTO } from "@/cockpit/models/block_state";
 import type { ColumnMoveDTO } from "@/cockpit/models/column_move";
@@ -18,7 +20,22 @@ import type { StatusMoveRequestDTO } from "@/cockpit/models/status_move_action";
 
 const ROOT_ELEMENT_ID = "root";
 
-type Screen = { readonly name: "tickets" } | { readonly name: "cockpit"; readonly ticketKey: string };
+type Screen =
+  { readonly name: "tickets" } | { readonly name: "editor" } | { readonly name: "cockpit"; readonly ticketKey: string };
+
+function EditorRoute({ onBack, onSaved }: { readonly onBack: () => void; readonly onSaved: () => void }): ReactElement {
+  const state = usePipelineDraft(onSaved);
+  return (
+    <PipelineEditorScreen
+      state={state}
+      onBack={onBack}
+      onResync={() => {
+        onSaved();
+        state.reload();
+      }}
+    />
+  );
+}
 
 function withTransition(change: () => void): void {
   document.startViewTransition(() => {
@@ -184,6 +201,19 @@ function CockpitApp(): ReactElement {
     </>
   );
 
+  if (screen.name === "editor") {
+    return (
+      <EditorRoute
+        onBack={() => {
+          withTransition(() => {
+            setScreen({ name: "tickets" });
+          });
+        }}
+        onSaved={sprintBoard.refreshAll}
+      />
+    );
+  }
+
   if (screen.name === "cockpit") {
     return (
       <>
@@ -216,6 +246,11 @@ function CockpitApp(): ReactElement {
         onOpenTicket={openTicket}
         onBlockClick={blockClickFor}
         onMoveClick={moveClickFor}
+        onOpenEditor={() => {
+          withTransition(() => {
+            setScreen({ name: "editor" });
+          });
+        }}
       />
       {popover}
     </>

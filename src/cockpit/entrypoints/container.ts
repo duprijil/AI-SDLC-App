@@ -10,6 +10,12 @@ import { AgentActionsCockpit, type AgentActionSteps } from "@/cockpit/entrypoint
 import { type AgentActivity, Attention } from "@/cockpit/models/attention";
 import { DesktopWindowSettings } from "@/cockpit/models/desktop_window_settings";
 import { CockpitConfigurationError } from "@/cockpit/models/errors";
+import {
+  type EditorColumnDTO,
+  PipelineEditor,
+  type PipelineEditorDTO,
+  type PipelineSaveRequestDTO,
+} from "@/cockpit/models/pipeline_editor";
 import { CheckTicketEnvironments } from "@/cockpit/use_cases/check_ticket_environments";
 import { EndFinishedSessions } from "@/cockpit/use_cases/end_finished_sessions";
 import { PrepareTicketWorkspace } from "@/cockpit/use_cases/prepare_ticket_workspace";
@@ -34,6 +40,8 @@ import type { LoggerPort } from "@/core/adapters/logger_port";
 import { DeliveryContainer } from "@/delivery/entrypoints/container";
 import { PipelineContainer } from "@/pipeline/entrypoints/container";
 import { InvalidProjectConfigError } from "@/pipeline/models/errors";
+import type { PipelineDraftDTO } from "@/pipeline/models/pipeline_draft";
+import type { PipelineEditDTO } from "@/pipeline/models/pipeline_edit";
 import type { ProjectDefinition } from "@/pipeline/models/project_definition";
 import { SessionContainer } from "@/session/entrypoints/container";
 import { TicketContainer } from "@/ticket/entrypoints/container";
@@ -55,7 +63,7 @@ function collectProblems<Loaded>(load: () => Loaded, problems: string[]): Loaded
 
 export class CockpitContainer {
   readonly #config: ProjectConfig;
-  readonly #projectDefinition: ProjectDefinition;
+  #projectDefinition: ProjectDefinition;
   readonly #ticketContainer: TicketContainer;
   readonly #changeContainer: ChangeContainer;
   readonly #deliveryContainer: DeliveryContainer;
@@ -147,6 +155,50 @@ export class CockpitContainer {
       },
       this.#projectDefinition.project,
     );
+  }
+
+  reloadProject(): readonly string[] {
+    const problems: string[] = [];
+    const reloaded = collectProblems(
+      () => this.#pipelineContainer.loadProject().execute(this.#config.activeProject),
+      problems,
+    );
+    if (reloaded !== null) {
+      this.#projectDefinition = reloaded;
+    }
+    return problems;
+  }
+
+  pipelineEditor(boardColumns: readonly EditorColumnDTO[]): PipelineEditorDTO {
+    const project = this.#projectDefinition.project;
+    return {
+      filePath: join(this.#config.projectsRoot, project.projectKey, "pipeline.yaml"),
+      boardId: project.tracker.boardId,
+      columns: boardColumns,
+      envNames: [...project.environmentNames()],
+      environments: PipelineEditor.environmentRows(project),
+      promptTemplates: this.#pipelineContainer.listPromptTemplates().execute(project.projectKey),
+      draft: this.checkPipelineDraft(boardColumns, []),
+    };
+  }
+
+  checkPipelineDraft(boardColumns: readonly EditorColumnDTO[], edits: readonly PipelineEditDTO[]): PipelineDraftDTO {
+    const project = this.#projectDefinition.project;
+    return this.#pipelineContainer.checkPipelineDraft().execute({
+      project,
+      file: this.#pipelineContainer.openPipelineDraft().execute(project.projectKey),
+      edits,
+      boardColumnKeys: boardColumns.map((column) => column.columnKey),
+    });
+  }
+
+  savePipelineDraft(boardColumns: readonly EditorColumnDTO[], request: PipelineSaveRequestDTO): PipelineDraftDTO {
+    return this.#pipelineContainer.savePipelineDraft().execute({
+      project: this.#projectDefinition.project,
+      expectedHash: request.expectedHash,
+      edits: request.edits,
+      boardColumnKeys: boardColumns.map((column) => column.columnKey),
+    });
   }
 
   promoteLinks(): readonly string[] {
