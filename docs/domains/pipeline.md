@@ -1,6 +1,6 @@
 # pipeline
 
-Normal domain. Loads and validates a project's configuration: `projects/<name>/project.yaml` and `pipeline.yaml`.
+Normal domain. Loads and validates a project's configuration (`projects/<name>/project.yaml` and `pipeline.yaml`), and edits `pipeline.yaml` for the Pipeline editor.
 
 ## Language
 
@@ -18,6 +18,8 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 | Prompt template | A Markdown file `projects/<name>/prompts/<file>.md` with `{{placeholder}}` values. Five defaults ship in code and are used when the file is missing |
 | Prompt actions | `actions.<state>: [ { session: prompts/<file>.md } ]` on a block; other action names are kept for later milestones and ignored |
 | Gate prompts | `gate.then: [ { session: prompts/<file>.md } ]` on a column, sent after a forward move out of it |
+| Pipeline edit | One editor operation: set a block field, set runs, add a level or block, move or remove a block, set a state's or a gate's prompts |
+| Pipeline draft | `pipeline.yaml` with the edits applied, its columns, its problems (each with its block id when known), each block's YAML, and the original file's hash |
 | Project definition | A loaded project together with its pipeline |
 
 ## Responsibilities
@@ -42,4 +44,8 @@ Normal domain. Loads and validates a project's configuration: `projects/<name>/p
 - A `prompt` block has `prompt:`, and its `done_when` (if any) is `session.checkpoint(<kind>)` with a snake_case kind, which `sdlc.checkpoint(kind)` ticks.
 - Every referenced template exists (as a file or a default) and uses only known placeholders; `{{change.*}}` only on change blocks.
 - Default templates are written only when missing, never over a file.
+- Edits change the parsed YAML document in place, so comments, key order and fields the app doesn't use yet are kept. The file is never regenerated.
+- A draft is checked with the same rules as at startup: schema, pipeline rules, board columns, envs, prompt files and placeholders.
+- A save refuses when the file's hash changed since it was opened, or when the draft has problems. It copies the old file to `pipeline.yaml.bak` first.
+- An `each_change` level holds one block: nothing moves into it, and a change block runs per change only alone in its level. A block's id and type can't be cleared.
 - All of `projects/` is gitignored, because project files name real company systems. Nothing under it is committed.

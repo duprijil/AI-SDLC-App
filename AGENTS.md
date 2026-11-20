@@ -42,7 +42,7 @@ The full list is proposed in [docs/specs/v1-scope.md](docs/specs/v1-scope.md) §
 | core | shared kernel | Model convention, logging, business-free UI components | [docs/domains/core.md](docs/domains/core.md) |
 | session | normal | One Claude Code session per ticket: workspace, PTY, hooks, resume, the `sdlc` MCP tools and permissions, drafts and checkpoints | [docs/domains/session.md](docs/domains/session.md) |
 | change | normal | Pull requests linked to a ticket: review state from the viewer's side, merge, update branch, reply | [docs/domains/change.md](docs/domains/change.md) |
-| pipeline | normal | Project and pipeline config: load and validate (editing in M5) | [docs/domains/pipeline.md](docs/domains/pipeline.md) |
+| pipeline | normal | Project and pipeline config: load, validate, prompt templates, and in-place edits of `pipeline.yaml` | [docs/domains/pipeline.md](docs/domains/pipeline.md) |
 | ticket | normal | Tracker tickets and board columns from Jira, with a SQLite cache, and status moves | [docs/domains/ticket.md](docs/domains/ticket.md) |
 | cockpit | combined | Desktop bootstrap, sprint board, refresh engine, block states, gates, attention; My tickets and Cockpit screens | [docs/domains/cockpit.md](docs/domains/cockpit.md) |
 | delivery | normal | Deploy runs from GitHub Actions and "environment contains change" from local git (runtime state planned) | [docs/domains/delivery.md](docs/domains/delivery.md) |

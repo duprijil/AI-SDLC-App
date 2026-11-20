@@ -22,6 +22,7 @@ export interface MyTicketsScreenProps {
   readonly onOpenTicket: (ticketKey: string) => void;
   readonly onBlockClick: (ticketKey: string) => TicketCardProps["onBlockClick"];
   readonly onMoveClick: (ticketKey: string) => TicketCardProps["onMoveClick"];
+  readonly onOpenEditor: () => void;
 }
 
 function EmptyState({ board, isRefreshing }: Pick<MyTicketsScreenProps, "board" | "isRefreshing">): ReactElement {
@@ -40,6 +41,7 @@ export function MyTicketsScreen({
   onOpenTicket,
   onBlockClick,
   onMoveClick,
+  onOpenEditor,
 }: MyTicketsScreenProps): ReactElement {
   const [filter, setFilter] = useState<AttentionFilter>("all");
   const allCards = board?.cards ?? [];
@@ -68,6 +70,9 @@ export function MyTicketsScreen({
           </div>
           <span className="spacer" />
           <BoardStatus board={board} isRefreshing={isRefreshing} />
+          <button type="button" className="btn" onClick={onOpenEditor}>
+            ✎ Pipeline
+          </button>
           <button type="button" className="btn" onClick={onRefresh} disabled={isRefreshing}>
             ↻ Refresh all
           </button>

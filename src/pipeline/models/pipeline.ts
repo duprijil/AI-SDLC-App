@@ -182,6 +182,10 @@ export class Pipeline {
     this.columns = columns;
   }
 
+  static problemsOf(pipeline: PipelineDTO): readonly string[] {
+    return pipelineProblems(pipeline);
+  }
+
   static create(pipeline: PipelineDTO): Pipeline {
     const problems = pipelineProblems(pipeline);
     ensure(problems.length === 0, () => new InvalidProjectConfigError(problems));

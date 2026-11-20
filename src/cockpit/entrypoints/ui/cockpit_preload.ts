@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
 import type { ChangeActionResultDTO } from "@/cockpit/models/change_action";
+import type { PipelineEditorDTO, PipelineSaveResultDTO } from "@/cockpit/models/pipeline_editor";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
 import {
@@ -11,6 +12,7 @@ import {
   type TicketRefreshDTO,
 } from "@/cockpit/models/sprint_board_bridge";
 import type { StatusMovePreviewDTO, StatusMoveResultDTO } from "@/cockpit/models/status_move_action";
+import type { PipelineDraftDTO } from "@/pipeline/models/pipeline_draft";
 import type { AgentSessionDTO } from "@/session/models/agent_session";
 import {
   SESSION_BRIDGE_GLOBAL,
@@ -67,6 +69,11 @@ const sprintBoardBridge: SprintBoardBridge = {
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.changePrompt, request)) as readonly string[],
   recordCheckpoint: async (request) =>
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.checkpoint, request)) as ChangeActionResultDTO,
+  openPipeline: async () => (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.pipelineOpen)) as PipelineEditorDTO,
+  checkPipeline: async (request) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.pipelineCheck, request)) as PipelineDraftDTO,
+  savePipeline: async (request) =>
+    (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.pipelineSave, request)) as PipelineSaveResultDTO,
   writeDefaultPrompts: async () =>
     (await ipcRenderer.invoke(SPRINT_BOARD_CHANNEL.writeDefaultPrompts)) as readonly string[],
   previewStatusMove: async (request) =>

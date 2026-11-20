@@ -2,6 +2,12 @@ import type { AttentionKind } from "@/cockpit/models/attention";
 import type { AttestTickRequestDTO } from "@/cockpit/models/attest_action";
 import type { ChangeActionDTO, ChangeActionResultDTO } from "@/cockpit/models/change_action";
 import type { CheckpointRequestDTO } from "@/cockpit/models/checkpoint_action";
+import type {
+  PipelineCheckRequestDTO,
+  PipelineEditorDTO,
+  PipelineSaveRequestDTO,
+  PipelineSaveResultDTO,
+} from "@/cockpit/models/pipeline_editor";
 import type { PromptRequestDTO } from "@/cockpit/models/prompt_request";
 import type { RefreshProgressDTO } from "@/cockpit/models/refresh_progress";
 import type { SprintBoardDTO, TicketCardDTO } from "@/cockpit/models/sprint_board";
@@ -10,6 +16,7 @@ import type {
   StatusMoveRequestDTO,
   StatusMoveResultDTO,
 } from "@/cockpit/models/status_move_action";
+import type { PipelineDraftDTO } from "@/pipeline/models/pipeline_draft";
 import type { Unsubscribe } from "@/session/models/session_bridge";
 
 export const SPRINT_BOARD_BRIDGE_GLOBAL = "cockpitBoard";
@@ -30,6 +37,9 @@ export const SPRINT_BOARD_CHANNEL = Object.freeze({
   checkpoint: "prompt:checkpoint",
   writeDefaultPrompts: "prompts:write-defaults",
   card: "board:card",
+  pipelineOpen: "pipeline:open",
+  pipelineCheck: "pipeline:check",
+  pipelineSave: "pipeline:save",
 });
 
 export interface AttentionChangeDTO {
@@ -50,6 +60,9 @@ export interface SprintBoardBridge {
   buildPrompt(request: PromptRequestDTO): Promise<readonly string[]>;
   recordCheckpoint(request: CheckpointRequestDTO): Promise<ChangeActionResultDTO>;
   writeDefaultPrompts(): Promise<readonly string[]>;
+  openPipeline(): Promise<PipelineEditorDTO>;
+  checkPipeline(request: PipelineCheckRequestDTO): Promise<PipelineDraftDTO>;
+  savePipeline(request: PipelineSaveRequestDTO): Promise<PipelineSaveResultDTO>;
   previewStatusMove(request: StatusMoveRequestDTO): Promise<StatusMovePreviewDTO>;
   moveStatus(request: StatusMoveRequestDTO): Promise<StatusMoveResultDTO>;
   tickAttestation(request: AttestTickRequestDTO): Promise<ChangeActionResultDTO>;

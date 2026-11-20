@@ -375,7 +375,7 @@ Transitions: card → Cockpit (shared graph and title, the list slides in, the t
 | M2 | Changes + engine (GH-4, [spec](GH-4-cockpit-check-changes-and-refresh.md)) | GitHub connector · `change` blocks · refresh engine with early stop + animation · popovers · merge, update branch, comment | The Code Review column is fully correct for real tickets | ✅ Done |
 | M3 | Delivery (GH-5 [gates and status moves](GH-5-cockpit-move-ticket-status.md), then GH-6 [deploy + attest](GH-6-cockpit-deploy-and-attest.md); kubectl runtime deferred) | GitHub Actions + kubectl runtime · ancestry and patch-id · `deploy` blocks · `attest` with pins · gates and status moves (forward and back) | "In dev / in stage" is correct across the Deck Builder repos | GH-5 done, GH-6 implemented; kubectl runtime deferred |
 | M4 | Sessions | Workspaces and worktrees · Claude Code PTY · harness (inject, hooks, permissions) · `sdlc` MCP server · `prompt` blocks · Cockpit terminal · attention from hooks | A real ticket runs from build to merge through the Cockpit | Partly: PTY, hooks, session per ticket (M0–M2); worktrees and context in GH-7; GH-8 [resume and prompts](GH-8-session-resume-and-prompts.md) implemented; GH-9 [sdlc MCP and permissions](GH-9-session-sdlc-mcp-and-permissions.md) implemented |
-| M5 | Editor + polish | Pipeline editor (read/write YAML, validation) · first-run screen · ● Live · ? help · transitions | The PoC can be retired | — |
+| M5 | Editor + polish (GH-10 [pipeline editor](GH-10-pipeline-editor.md) implemented) | Pipeline editor (read/write YAML, validation) · first-run screen · ● Live · ? help · transitions | The PoC can be retired | — |
 | v1.1 | Next | Jenkins connector · mirror TUI permissions onto the graph · several projects | — | — |
 
 ---

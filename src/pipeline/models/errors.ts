@@ -15,3 +15,15 @@ export class InvalidProjectConfigError extends PipelineError {
 export class PromptTemplateError extends PipelineError {
   override readonly name: string = "PromptTemplateError";
 }
+
+export class PipelineFileError extends PipelineError {
+  override readonly name: string = "PipelineFileError";
+}
+
+export class PipelineEditError extends PipelineError {
+  override readonly name: string = "PipelineEditError";
+}
+
+export class PipelineFileChangedError extends PipelineError {
+  override readonly name: string = "PipelineFileChangedError";
+}
